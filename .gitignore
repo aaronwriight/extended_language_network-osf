@@ -81,6 +81,5 @@ README.html
 
 # folders produced from script (to save space)
 /viz/images/*/
-/results/stats/*model_stats/
 /results/tables/*/
 /.quarto/
