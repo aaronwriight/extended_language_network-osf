@@ -1,1 +1,0 @@
-ROI	Subject	Effect	Session.Partition	LocalizerSize	EffectSize	task	localizer	parcels	dataset	condition
