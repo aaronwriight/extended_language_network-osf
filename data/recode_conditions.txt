@@ -1,0 +1,7 @@
+Effect	condition
+I	intact speech
+D	degraded speech
+S	sentences
+N	nonwords
+H	hard vWM
+E	easy vWM	

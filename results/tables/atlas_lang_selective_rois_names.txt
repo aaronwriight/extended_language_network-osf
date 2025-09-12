@@ -1,0 +1,164 @@
+roi	atlas	hemi	ROIName	lobe
+1	HOCortical	left	Frontal Pole	Frontal
+1	HOSubcortical	left	Left Cerebral White Matter	NA
+2	HOSubcortical	left	Left Cerebral Cortex	NA
+3	HOCortical	left	Sup. Frontal Gyrus	Frontal
+4	DKT	left	caudal middle frontal	Frontal
+4	HOCortical	left	Mid. Frontal Gyrus	Frontal
+5	HOCortical	left	Inf. Frontal Gyrus pars triangularis	Frontal
+6	HOCortical	left	Inf. Frontal Gyrus pars opercularis	Frontal
+7	HOCortical	left	Precentral Gyrus	Frontal
+8	Glasser	left	4	Frontal
+8	HOCortical	left	Temporal Pole	Temporal
+9	Glasser	left	3b	Parietal
+9	HOCortical	left	Sup. Temporal Gyrus ant.	Temporal
+9	HOSubcortical	left	Left Hippocampus	NA
+10	DKT	left	inferior temporal	Temporal
+10	Glasser	left	FEF	Frontal
+10	HOCortical	left	Sup. Temporal Gyrus post.	Temporal
+10	HOSubcortical	left	Left Amygdala	NA
+11	Glasser	left	PEF	Frontal
+11	HOCortical	left	Mid. Temporal Gyrus ant.	Temporal
+12	Glasser	left	55b	Frontal
+12	HOCortical	left	Mid. Temporal Gyrus post.	Temporal
+13	DKT	left	lateral orbitofrontal	Frontal
+13	HOCortical	left	Mid. Temporal Gyrus temporooccipital	Temporal
+14	HOCortical	left	Inf. Temporal Gyrus ant.	Temporal
+15	DKT	left	medial orbitofrontal	Frontal
+15	HOCortical	left	Inf. Temporal Gyrus post.	Temporal
+16	DKT	left	middle temporal	Temporal
+19	DKT	left	pars opercularis	Frontal
+19	HOSubcortical	right	Right Hippocampus	NA
+20	DKT	left	pars orbitalis	Frontal
+20	HOCortical	left	Supramarginal Gyrus post.	Parietal
+20	HOSubcortical	right	Right Amygdala	NA
+21	DKT	left	pars triangularis	Frontal
+21	HOCortical	left	Angular Gyrus	Parietal
+23	DKT	left	postcentral	Parietal
+25	DKT	left	precentral	Frontal
+25	Glasser	left	PSL	Parietal, Temporal
+25	HOCortical	left	Frontal Medial Cortex	Frontal
+26	Glasser	left	SFL	Frontal
+26	HOCortical	left	Juxtapositional Lobule Cortex	Frontal
+28	Glasser	left	STV	Temporal
+29	DKT	left	superior frontal	Frontal
+31	DKT	left	superior temporal	Temporal
+32	DKT	left	supramarginal	Parietal
+33	HOCortical	left	Frontal Orbital Cortex	Frontal
+35	Glasser	left	31pv	Limbic
+37	HOCortical	left	Temporal Fusiform Cortex ant.	Temporal
+38	HOCortical	left	Temporal Fusiform Cortex post.	Temporal
+41	HOCortical	left	Frontal Operculum Cortex	Frontal
+42	HOCortical	left	Central Opercular Cortex	Parietal
+43	HOCortical	left	Parietal Operculum Cortex	Parietal
+44	HOCortical	left	Planum Polare	Temporal
+46	HOCortical	left	Planum Temporale	Temporal
+51	DKT	right	medial orbitofrontal	Frontal
+52	DKT	right	middle temporal	Temporal
+53	HOCortical	right	Inf. Frontal Gyrus pars triangularis	Frontal
+54	HOCortical	right	Inf. Frontal Gyrus pars opercularis	Frontal
+55	DKT	right	pars opercularis	Frontal
+56	HOCortical	right	Temporal Pole	Temporal
+57	DKT	right	pars triangularis	Frontal
+57	HOCortical	right	Sup. Temporal Gyrus ant.	Temporal
+58	HOCortical	right	Sup. Temporal Gyrus post.	Temporal
+59	HOCortical	right	Mid. Temporal Gyrus ant.	Temporal
+60	HOCortical	right	Mid. Temporal Gyrus post.	Temporal
+61	DKT	right	precentral	Frontal
+61	HOCortical	right	Mid. Temporal Gyrus temporooccipital	Temporal
+62	HOCortical	right	Inf. Temporal Gyrus ant.	Temporal
+63	Glasser	left	8BM	Frontal
+65	DKT	right	superior frontal	Frontal
+65	Glasser	left	10r	Frontal
+66	Glasser	left	47m	Frontal
+67	DKT	right	superior temporal	Temporal
+67	Glasser	left	8Av	Frontal
+68	HOCortical	right	Supramarginal Gyrus post.	Parietal
+69	Glasser	left	9m	Frontal
+69	HOCortical	right	Angular Gyrus	Parietal
+70	Glasser	left	8BL	Frontal
+71	Glasser	left	9p	Frontal
+72	Glasser	left	10d	Frontal
+73	HOCortical	right	Frontal Medial Cortex	Frontal
+74	Glasser	left	44	Frontal
+74	HOCortical	right	Juxtapositional Lobule Cortex	Frontal
+75	Glasser	left	45	Frontal
+76	Glasser	left	47l	Frontal
+78	Glasser	left	6r	Frontal
+79	Glasser	left	IFJa	Frontal
+81	Glasser	left	IFSp	Frontal
+81	HOCortical	right	Frontal Orbital Cortex	Frontal
+82	Glasser	left	IFSa	Frontal
+85	HOCortical	right	Temporal Fusiform Cortex ant.	Temporal
+87	Glasser	left	9a	Frontal
+88	Glasser	left	10v	Frontal
+94	Glasser	left	47s	Frontal
+94	HOCortical	right	Planum Temporale	Temporal
+100	Glasser	left	OP4	Parietal, Frontal
+102	Glasser	left	OP2-3	Temporal, Parietal, Frontal
+104	Glasser	left	RI	Temporal
+105	Glasser	left	PFcm	Parietal
+107	Glasser	left	TA2	Temporal
+108	Glasser	left	FOP4	Frontal, Temporal
+110	Glasser	left	Pir	Temporal, Limbic
+113	Glasser	left	FOP1	Frontal
+120	Glasser	left	H	Limbic
+122	Glasser	left	PeEc	Limbic, Temporal
+123	Glasser	left	STGa	Temporal
+124	Glasser	left	PBelt	Temporal
+125	Glasser	left	A5	Temporal
+128	Glasser	left	STSda	Temporal
+129	Glasser	left	STSdp	Temporal
+130	Glasser	left	STSvp	Temporal
+131	Glasser	left	TGd	Temporal
+132	Glasser	left	TE1a	Temporal
+133	Glasser	left	TE1p	Temporal
+135	Glasser	left	TF	Temporal
+136	Glasser	left	TE2p	Temporal
+137	Glasser	left	PHT	Temporal, Occipital
+139	Glasser	left	TPOJ1	Temporal
+140	Glasser	left	TPOJ2	Temporal
+141	Glasser	left	TPOJ3	Occipital
+147	Glasser	left	PFop	Parietal
+148	Glasser	left	PF	Parietal
+150	Glasser	left	PGi	Parietal, Occipital, Temporal
+161	Glasser	left	31pd	Parietal, Limbic
+165	Glasser	left	s32	Frontal, Limbic
+166	Glasser	left	pOFC	Limbic
+169	Glasser	left	FOP5	Frontal
+172	Glasser	left	TGv	Temporal
+175	Glasser	left	A4	Temporal
+176	Glasser	left	STSva	Temporal
+177	Glasser	left	TE1m	Temporal
+178	Glasser	left	PI	Temporal
+209	Glasser	right	3b	Parietal
+212	Glasser	right	55b	Frontal
+226	Glasser	right	SFL	Frontal
+228	Glasser	right	STV	Temporal
+266	Glasser	right	47m	Frontal
+269	Glasser	right	9m	Frontal
+270	Glasser	right	8BL	Frontal
+274	Glasser	right	44	Frontal
+275	Glasser	right	45	Frontal
+279	Glasser	right	IFJa	Frontal
+281	Glasser	right	IFSp	Frontal
+282	Glasser	right	IFSa	Frontal
+288	Glasser	right	10v	Frontal
+293	Glasser	right	OFC	Frontal
+307	Glasser	right	TA2	Temporal
+323	Glasser	right	STGa	Temporal
+325	Glasser	right	A5	Temporal
+328	Glasser	right	STSda	Temporal
+329	Glasser	right	STSdp	Temporal
+330	Glasser	right	STSvp	Temporal
+331	Glasser	right	TGd	Temporal
+332	Glasser	right	TE1a	Temporal
+333	Glasser	right	TE1p	Temporal
+337	Glasser	right	PHT	Temporal, Occipital
+339	Glasser	right	TPOJ1	Temporal
+340	Glasser	right	TPOJ2	Temporal
+341	Glasser	right	TPOJ3	Occipital
+372	Glasser	right	TGv	Temporal
+375	Glasser	right	A4	Temporal
+376	Glasser	right	STSva	Temporal
+377	Glasser	right	TE1m	Temporal

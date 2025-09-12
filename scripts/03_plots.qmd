@@ -1,0 +1,985 @@
+---
+title: "Extended Language Network | 03_plots"
+author: "Aaron Wright [`aawva@mit.edu`], Agata Wolna [`awolna@mit.edu`]"
+date: "08-29-2025"
+format: html
+editor: visual
+---
+
+## Overview
+
+**Purpose**: create various plots depicting the distribution of language-responsive and language-selective cortical and subcortical ROIs
+
+**Input(s)**: `AtlasParcels.xlsx`; `atlas_roi_models_pairwise_conditions.txt`, `gss_n772_roi_models_all_means.txt`, `gss_n86_roi_models_all_means.txt` and the lists of lang-responsive and lang-selective parcels (all produced in 00_stats); % overlap values between the atlas and functional language parcels (`voxel_overlap_results_average.txt`)
+
+**Process**: import and wrangle model statistical data and create bar descriptive bar plots and brain atlas plots using `{ggseg}`
+
+**Output(s)**: parcel activation bar plots; by-roi inset figures for the n=772 and n=86 gss models, and atlas parcels models; the base for the main cortical and subcortical figures from the paper; and bar plots showing the overlap between atlas and functional language parcels
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(ggsflabel)
+library(ggseg)
+library(ggsegGlasser)
+library(ggsegDKT)
+library(ggsegHO)
+library(patchwork)
+
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
+source(here("scripts", "plot_brains.R")) # functions for batch plotting atlas figures
+```
+
+## Data
+
+```{r}
+# read in data
+
+# GSS model - full model
+gss_means_plots_n772 <- read.delim(here("results", "stats", "gss_n772_model_stats", "gss_n772_roi_models_all_means.txt")) %>% as_tibble() %>% select(-df)
+# GSS model - n86 (only participants with all 3 tasks)
+gss_means_plots_n86 <- read.delim(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_all_means.txt")) %>% as_tibble() %>% select(-df)
+
+# Atlas model - main model
+roi_models_atlas <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_conditions.txt"), sep = "\t") %>% as_tibble()
+
+# ROIs language-responsive and language-selective
+lang_responsive_rois <- read.delim(here("results", "tables", "atlas_lang_responsive_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(lang_resp = 1) %>% select(-hemi, -ROIName)
+lang_selective_rois <- read.delim(here("results", "tables", "atlas_lang_selective_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(lang_sel = 1) %>% select(-hemi, -ROIName)
+```
+
+## Tidying
+
+```{r}
+# create a column that assigns 1 to language selective and responsive parcels and 0 to the remaining parcels
+roi_models_atlas <- roi_models_atlas %>% left_join(lang_responsive_rois) %>% left_join(lang_selective_rois) %>% separate(contrast, into = "task") %>% rename(parcels = atlas)
+
+# read in parcel decoding files
+parcels <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% rename(roi=ROI)
+hosubcortical_parcels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet ="HOSubcortical") %>% rename(roi=ROI)
+
+# Atlas parcels (cortical) overlap with GcSS parcels
+atlas_overlap_average <- read.delim(here("data", "voxel_overlap_results_average.txt")) %>% as_tibble() %>% rename(roi = ROI_Atlas) %>% 
+  mutate(parcels = ifelse(Atlas == "HOCortical_2mm.nii", "HOC", ifelse(Atlas == "DKT_in_MNI_sm2.nii", "DKT", "Glasser"))) %>% 
+  select(-Atlas, -ROI_GcSS)
+
+# create a data frame to define task effects
+effects <- data.frame(
+  column1 = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  column2 = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  column3 = c("degraded speech", "nonwords", "easy vWM", "intact speech", "sentences", "hard vWM"))
+# rename columns
+colnames(effects) <- c("task", "condition", "effect")
+
+# join effects with gss_means_plots
+gss_means_plots_n772 <- gss_means_plots_n772 %>% left_join(effects) %>% left_join(parcels) %>% mutate(model="n=772")
+gss_means_plots_n86 <- gss_means_plots_n86 %>% left_join(effects) %>% left_join(parcels) %>% mutate(model="n=86")
+```
+
+## Pre-processing atlas data
+
+### Desikan-Killiany-Tourville (DKT) atlas
+
+```{r}
+# get DKT labels
+dktlabels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet = "DKT") %>% rename(roi = ROI, region = ROIName)
+dktparc <- dkt %>% as.data.frame() %>% select(hemi, region, side) %>% distinct()
+
+## preparing data
+dkt_plot_lang <- roi_models_atlas %>% filter(parcels == "DKT") %>% left_join(dktlabels) %>% rename(MeanEffect = estimate)
+
+dkt_plot_lang <- dktparc %>% left_join(dkt_plot_lang, relationship = "many-to-many") %>% as_tibble() %>% 
+  mutate(lang_resp = ifelse(is.na(lang_resp), 0, 1), 
+         lang_sel = ifelse(is.na(lang_sel),0, 1), 
+         MeanEffect = ifelse(is.na(MeanEffect), 0, MeanEffect),
+         MeanEffectSelect = MeanEffect*lang_sel,
+         MeanEffectSelect = ifelse(MeanEffectSelect<0, 0, MeanEffectSelect),
+         MeanEffectResponsive = MeanEffect*lang_resp,
+         MeanEffectResponsive = ifelse(MeanEffectResponsive<0, 0, MeanEffectResponsive),
+         sig = as.factor(lang_sel)) %>%
+  ### dkt atlas contains 'roi' column of type 'character' - no other atlas inherently includes this column, and removing solves conflict when plotting overlap
+  select(-roi) %>% 
+  filter(!is.na(region))
+
+## add columns with % overlap with functional (GcSS) parcels
+dkt_dat_overlap <- atlas_overlap_average %>% filter(parcels=="DKT") %>% left_join(dktlabels)
+# select -roi for consistency
+dkt_dat_overlap <- dktparc %>% drop_na(region) %>% left_join(dkt_dat_overlap) %>% as_tibble() %>% select(-c(parcels, roi))
+
+dkt_plot_lang <- dkt_dat_overlap %>% left_join(dkt_plot_lang) 
+
+## count language-selective and language-responsive parcels
+dkt_plot_lang %>% filter(lang_sel == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+dkt_plot_lang %>% filter(lang_resp == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+
+# save a dataframe with DKT parcels names and info on language responsiveness and selectivity
+dkt_roi_classification <- dkt_plot_lang %>% select(parcels, hemi, region, side, lang_resp, lang_sel)
+outfile <- here("results", "tables", "dkt", "dkt_lang_responsive_selective_rois.txt")
+dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
+
+# save dataframe
+write.table(dkt_roi_classification, outfile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Harvard-Oxford Cortical atlas
+
+Please note that on occasion, the Angular Gyrus and Supramarginal Gyrus post. geometry correction must be performed manually.
+
+```{r}
+# fix the Angular Gyrus and Supramarginal Gyrus post. geometries - error (reversed order) is internal to the hoCort ggseg data
+## retrieve geometries
+lh_angular_geometry <- hoCort$data$geometry[1]
+lh_supramarginal_post_geometry <- hoCort$data$geometry[31]
+## reassign
+hoCort$data$geometry[1] <- lh_supramarginal_post_geometry
+hoCort$data$geometry[31] <- lh_angular_geometry
+
+# get HOC (Harvard-Oxford Cortical) labels
+hoclabels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet = "HOCortical") %>% rename(roi = ROI, region = ROIName)
+hocparc <- hoCort %>% as.data.frame() %>% select(hemi, region, side) %>% distinct()
+
+## fix the Heschl gyrus labels
+hoclabels$region[45] <- hocparc$region[6]
+hoclabels$region[93] <- hocparc$region[6]
+
+## preparing data
+hoCort_plot_lang <- roi_models_atlas %>% filter(parcels == "HOCortical") %>% left_join(hoclabels) %>% rename(MeanEffect = estimate)
+hoCort_plot_lang <- hocparc %>% left_join(hoCort_plot_lang, relationship = "many-to-many") %>% as_tibble() %>%
+  mutate(lang_resp = ifelse(is.na(lang_resp), 0, 1), 
+         lang_sel = ifelse(is.na(lang_sel),0, 1), 
+         MeanEffect = ifelse(is.na(MeanEffect), 0, MeanEffect),
+         MeanEffectSelect = MeanEffect*lang_sel,
+         MeanEffectSelect = ifelse(MeanEffectSelect<0, 0, MeanEffectSelect),
+         MeanEffectResponsive = MeanEffect*lang_resp,
+         MeanEffectResponsive = ifelse(MeanEffectResponsive<0, 0, MeanEffectResponsive),
+         sig = as.factor(lang_sel)) %>% 
+  filter(!is.na(region))
+
+## add columns with % overlap with functional (GcSS) parcels
+hoCort_dat_overlap <- atlas_overlap_average %>% filter(parcels == "HOC") %>% left_join(hoclabels)
+hoCort_dat_overlap <- hocparc %>% drop_na(region) %>% left_join(hoCort_dat_overlap) %>% as_tibble() %>% select(-parcels)
+
+hoCort_plot_lang <- hoCort_dat_overlap %>% left_join(hoCort_plot_lang)
+
+## count language-selective and language-responsive parcels
+hoCort_plot_lang %>% filter(lang_sel == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+hoCort_plot_lang %>% filter(lang_resp == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+
+# save a dataframe with HOC parcels names and info on language responsiveness and selectivity
+hoCort_roi_classification <- hoCort_plot_lang %>% select(parcels, hemi, region, side, lang_resp, lang_sel)
+outfile <- here("results", "tables", "hoCort", "hoCort_lang_responsive_selective_rois.txt")
+dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
+
+# save dataframe
+write.table(hoCort_roi_classification, outfile, sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+### Glasser atlas
+
+```{r}
+# get Glasser labels
+glasserlabels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet = "Glasser") %>% rename(roi = ROI, region = ROIName)
+glasserparc <- glasser %>% as.data.frame() %>% select(hemi, region, side) %>% distinct()
+
+## preparing data
+glasser_plot_lang <- roi_models_atlas %>% filter(parcels == "Glasser") %>% left_join(glasserlabels) %>% rename(MeanEffect = estimate)
+
+glasser_plot_lang <- glasserparc %>% left_join(glasser_plot_lang, relationship = "many-to-many") %>% as_tibble() %>% 
+  mutate(lang_resp = ifelse(is.na(lang_resp), 0, 1), 
+         lang_sel = ifelse(is.na(lang_sel),0, 1), 
+         MeanEffect = ifelse(is.na(MeanEffect), 0, MeanEffect),
+         MeanEffectSelect = MeanEffect*lang_sel,
+         MeanEffectSelect = ifelse(MeanEffectSelect<0, 0, MeanEffectSelect),
+         MeanEffectResponsive = MeanEffect*lang_resp,
+         MeanEffectResponsive = ifelse(MeanEffectResponsive<0, 0, MeanEffectResponsive),
+         sig = as.factor(lang_sel)) %>%
+  select(-roi) %>% 
+  filter(!is.na(region))
+
+## add columns with % overlap with functional (GcSS) parcels
+glasser_dat_overlap <- atlas_overlap_average %>% filter(parcels == "Glasser") %>% left_join(glasserlabels)
+glasser_dat_overlap <- glasserparc %>% drop_na(region) %>% left_join(glasser_dat_overlap) %>% as_tibble() %>% select(-parcels)
+
+glasser_plot_lang <- glasser_dat_overlap %>% left_join(glasser_plot_lang)
+
+## count language-selective and language-responsive parcels
+glasser_plot_lang %>% filter(lang_sel == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+glasser_plot_lang %>% filter(lang_resp == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+
+# save a dataframe with Glasser parcels names and info on language responsiveness and selectivity
+glasser_roi_classification <- glasser_plot_lang %>% select(parcels, hemi, region, side, lang_resp, lang_sel)
+outfile <- here("results", "tables", "glasser", "glasser_lang_responsive_selective_rois.txt")
+dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
+
+# save dataframe
+write.table(glasser_roi_classification, outfile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Harvard-Oxford Subcortical atlas
+
+As of March 2025, there is no published ggseg atlas for the Harvard-Oxford Subcortical atlas. We made use of the Aseg subcortical atlas from the {ggsegExtra} package, found [here](https://ggseg.github.io/ggsegExtra/articles/createaseg.html).
+
+```{r}
+# get HOSC (Harvard-Oxford Subcortical) labels
+hosclabels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet="HOSubcortical") %>% mutate(lobe = NA) %>% rename(roi = ROI, region = ROIName)
+## preprocessing aseg parcels to align with hosc labels for plotting
+hoscparc <- aseg %>% 
+  as.data.frame() %>% 
+  select(hemi, region, side) %>% 
+  distinct() %>%
+  mutate(original_region = region,  # Store original region names temporarily
+         region = case_when(
+           region == "thalamus proper" & hemi == "left" ~ "Left Thalamus",
+           region == "thalamus proper" & hemi == "right" ~ "Right Thalamus",
+           region == "lateral ventricle" & hemi == "left" ~ "Left Lateral Ventricle",
+           region == "lateral ventricle" & hemi == "right" ~ "Right Lateral Ventricle",
+           region == "caudate" & hemi == "left" ~ "Left Caudate",
+           region == "caudate" & hemi == "right" ~ "Right Caudate",
+           region == "putamen" & hemi == "left" ~ "Left Putamen",
+           region == "putamen" & hemi == "right" ~ "Right Putamen",
+           region == "hippocampus" & hemi == "left" ~ "Left Hippocampus",
+           region == "hippocampus" & hemi == "right" ~ "Right Hippocampus",
+           region == "pallidum" & hemi == "left" ~ "Left Pallidum",
+           region == "pallidum" & hemi == "right" ~ "Right Pallidum",
+           region == "amygdala" & hemi == "left" ~ "Left Amygdala",
+           region == "amygdala" & hemi == "right" ~ "Right Amygdala",
+           TRUE ~ region  # Keep all other regions unchanged
+         )) %>%
+  left_join(hosclabels, by = "region") %>%
+  mutate(hemi = coalesce(hemi.x, hemi.y)) %>%
+  select(hemi, original_region, region, side, roi)
+
+## preparing data
+hoSubCort_plot_lang <- roi_models_atlas %>% filter(parcels == "HOSubcortical") %>% left_join(hosclabels) %>% rename(MeanEffect = estimate)
+hoSubCort_plot_lang <- hoscparc %>% left_join(hoSubCort_plot_lang) %>% as_tibble() %>%
+  # reverse the renaming after merge to get back to the original region names
+  select(-region) %>%
+  rename(region = original_region) %>%
+  mutate(lang_resp = ifelse(is.na(lang_resp), 0, 1), 
+         lang_sel = ifelse(is.na(lang_sel),0, 1), 
+         MeanEffect = ifelse(is.na(MeanEffect), 0, MeanEffect),
+         MeanEffectSelect = MeanEffect*lang_sel,
+         MeanEffectSelect = ifelse(MeanEffectSelect<0, 0, MeanEffectSelect),
+         MeanEffectResponsive = MeanEffect*lang_resp,
+         MeanEffectResponsive = ifelse(MeanEffectResponsive<0, 0, MeanEffectResponsive),
+         sig = as.factor(lang_sel)) %>% 
+  filter(!is.na(region))
+
+## count language-selective and language-responsive parcels
+hoSubCort_plot_lang %>% filter(lang_sel == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+hoSubCort_plot_lang %>% filter(lang_resp == 1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+
+# save a dataframe with HOSC parcels names and info on language responsiveness and selectivity
+hoSubCort_roi_classification <- hoSubCort_plot_lang %>% select(parcels, hemi, region, side, lang_resp, lang_sel)
+outfile <- here("results", "tables", "hoSubCort", "hoSubCort_lang_responsive_selective_rois.txt")
+dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
+
+# save dataframe
+write.table(hoSubCort_roi_classification, outfile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+## By-ROI bar plots
+
+### GSS cortical / cerebellar bar plots (n=772 & n=86) and inset plots
+
+```{r}
+# define parameters for both sample sizes
+plot_configs <- list(
+  list(n = 772, df = gss_means_plots_n772, folder = "by_roi_cortical_n772", combined_file = "GSS_language_alice_md_left_cortical_n772.jpg"),
+  list(n = 86, df = gss_means_plots_n86, folder = "by_roi_cortical_n86", combined_file = "GSS_language_alice_md_left_cortical_n86.jpg")
+)
+
+for(cfg in plot_configs){
+
+  df <- cfg$df
+  
+  # ROI names
+  labels <- df %>%
+    select(ROI_new, hemisphere, label) %>%
+    filter(!is.na(ROI_new)) %>%
+    arrange(ROI_new) %>%
+    unique()
+  
+  # cast columns as factors for plotting
+  df$effect <- factor(df$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+  df$label <- factor(df$label, labels$label %>% unique())
+  df$task <- factor(df$task, c("Lang", "Alice", "MD"))
+  
+  # combined bar plot
+  df %>% mutate(hemilabel = str_c(hemisphere, " ", label)) %>% 
+    filter(hemisphere=="left", label!="cerebellum") %>% 
+    ggplot(aes(x = label, y = emmean, ymin = emmean-se, ymax = emmean+se, fill = effect)) +
+    geom_col(position = position_dodge(0.9), color="black") +
+    geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+    scale_fill_manual(values = cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete_wrap("parcel") +
+    coord_cartesian(ylim = c(-2, 5)) +
+    my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+  
+  ## save combined plot
+  ggsave(str_c(here("viz", "images", cfg$combined_file)), dpi=500, width = 30, height = 16, units = "cm")
+  
+  # by-ROI plots
+  for(nroi in 1:27){
+
+    df %>% filter(ROI_new == nroi) %>% 
+      ggplot(aes(x = task, y = emmean, ymin = lowCI, ymax = highCI, fill = effect)) +
+      geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
+      geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+      scale_fill_manual(values = cols_fill) +
+      scale_y_continuous('Effect size') +
+      scale_x_discrete_wrap("") +
+      guides(fill = FALSE, size = FALSE) +
+      ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
+      coord_cartesian(ylim =c(-2, 5)) +
+      my_theme_text_smaller
+
+    ## save plot — here() takes folder and file as separate args
+    ggsave(
+      here("viz", "images", cfg$folder, str_c("GSS_language_alice_md_", nroi, "_roi_nolegend.pdf")),
+      dpi=500, width = 5.8, height = 6, units = "cm"
+    )
+  }
+}
+
+# n=772-specific, language-selective inset plots
+
+# BTLA Cerebellum language-selective: small inset figures
+# 14 = BTLA, 23 = right Crus I / II / VIIb, 24 = right VIIb / VIIIa, 27 = left Crus II / VIIb
+
+inset_rois <- c(14, 23, 24, 27)
+
+for(inset_roi in inset_rois){
+
+  gss_means_plots_n772 %>% filter(ROI_new == inset_roi) %>% 
+    ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
+    geom_col(position = position_dodge(0.9), color="black", size=0.25) +
+    geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
+    scale_fill_manual(values=cols_fill) +
+    scale_y_continuous(name=NULL, labels=NULL) +
+    guides(fill = FALSE, size = FALSE) +
+    coord_cartesian(ylim=c(-0.1, 1)) +
+    my_theme_text_smaller
+
+  ## save plot
+  ggsave(str_c(here("viz", "images", "by_roi_cortical_n772", "GSS_language_alice_md_"), inset_roi, "_roi_inset.pdf"), 
+         dpi=500, width = 2.8, height = 2, units = "cm")
+}
+```
+
+### Full model n=772 vs. partial model n=86 model plots
+
+```{r}
+# set comparison df
+means_all_n86_comparison <- rbind(gss_means_plots_n772, gss_means_plots_n86)
+
+# set ROI labels
+labels <- means_all_n86_comparison %>% select(ROI_new, hemisphere, label) %>% filter(!is.na(ROI_new)) %>% arrange(ROI_new) %>% unique()
+
+means_all_n86_comparison$effect <- factor(means_all_n86_comparison$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+means_all_n86_comparison$label <- factor(means_all_n86_comparison$label, labels$label %>% unique())
+means_all_n86_comparison$task <- factor(means_all_n86_comparison$task, c("Lang", "Alice", "MD"))
+
+# by-ROI GSS
+for(nroi in 1:27){
+  means_all_n86_comparison %>% filter(ROI_new==nroi) %>% 
+    ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
+    geom_col(position = position_dodge(0.9), color="black", size=0.25) +
+    geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
+    scale_fill_manual(values=cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete_wrap("") +
+    guides(fill = FALSE, size = FALSE) +
+    facet_grid(~model, scales="free_x") +
+    ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
+    coord_cartesian(ylim=c(-2, 5)) +
+    my_theme_text_smaller_noborders
+  ggsave(str_c(here("viz", "images", "by_roi_cortical_n772_n86_comparison", "GCSS_language_alice_md_"), nroi, "_roi_nolegend.pdf"), dpi=500, width = 5.8, height = 6, units = "cm")
+}
+```
+
+### Subcortical bar plots (n=772)
+
+```{r}
+# subcortical parcels
+hosubcortical_parcels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet ="HOSubcortical") %>% rename(roi=ROI)
+
+# subcortical data
+subcortical_data <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_maineffects.txt"), sep = "\t") %>%
+  as_tibble() %>%
+  # construct error bars with pairwise data, begin by differentiating std. err
+  rename("condwise_se" = se)
+
+
+# provide pairwise std. err
+pairwise_se <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_conditions.txt"), sep = "\t") %>%
+  as_tibble() %>%
+  filter(atlas == "HOSubcortical") %>%
+  select(contrast, se, roi) %>%
+  rename("pairwise_se" = se) %>%
+  mutate(contrast = case_when(contrast == "Lang critical vs. baseline" ~ "Lang", contrast == "Alice critical vs. baseline" ~ "Alice", contrast == "MD critical vs. baseline" ~ "MD"))
+
+# exclude parcels not of interest (likely show a response to language for reasons other than true sensitivity)
+exclude <- c("Left Cerebral Cortex", 
+             "Right Cerebral Cortex", 
+             "Left Cerebral White Matter", 
+             "Right Cerebral White Matter", 
+             "Left Lateral Ventricle", 
+             "Right Lateral Ventricle",
+             "Brain-Stem")
+
+# prepare data
+roi_subcortical <- subcortical_data %>% 
+  separate(contrast, into=c("task", "condition")) %>%
+  mutate(task=ifelse(task=="Language", "Lang", task)) %>% 
+  left_join(effects) %>%
+  filter(atlas=="HOSubcortical") %>% 
+  left_join(hosubcortical_parcels) %>% 
+  left_join(lang_responsive_rois) %>% 
+  left_join(lang_selective_rois) %>%
+  # join pairwise std. err
+  left_join(pairwise_se, by = c("roi", "task" = "contrast")) %>% 
+  filter(!ROIName%in%exclude) %>% 
+  select(1:4, pairwise_se, everything(), -lobe) # reorder columns, drop lobe column
+
+# add contrasts
+roi_subcortical$effect <- factor(roi_subcortical$effect, 
+                                        c("sentences", 
+                                          "nonwords", 
+                                          "intact speech", 
+                                          "degraded speech", 
+                                          "hard vWM", 
+                                          "easy vWM"))
+
+# combined bar plot
+roi_subcortical %>%
+  filter(!is.na(hemi), !ROIName %in% exclude) %>%
+  ggplot(aes(x = ROIName, y = estimate, ymin = estimate-pairwise_se, ymax = estimate+pairwise_se, fill = effect)) +
+  geom_col(position = position_dodge(0.9), color="black") +
+  geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+  scale_fill_manual(values = cols_fill) +
+  scale_y_continuous('Effect size') +
+  scale_x_discrete_wrap("parcel") +
+  facet_grid(~hemi, scales = "free_x") +
+  my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+
+## save plot
+ggsave(str_c(here("viz", "images", "HOSubcortical_language_alice.jpg")), dpi=500, width = 30, height = 16, units = "cm")
+
+# 7 - write data
+write.table(roi_subcortical, here("results", "tables", "HOSubcortical_results.txt"), quote=FALSE, row.names = FALSE, sep = "\t")
+
+# subcortical labels
+subcort_rois <- roi_subcortical %>% select(roi) %>% unique() %>% pull()
+subcort_labels <- roi_subcortical %>% select(roi, ROIName) %>% filter(roi%in%subcort_rois) %>% arrange(roi) %>% unique()
+
+# by-ROI subcortical plots
+n=0
+for(nroi in subcort_rois){ # uses within groups
+  n=n+1
+  roi_subcortical %>%
+    filter(roi == nroi) %>%
+    mutate(task = factor(task, levels = c("Lang", "Alice", "MD"))) %>%  # set order
+    ggplot(aes(x = task, y = estimate, ymin = estimate-pairwise_se, ymax = estimate+pairwise_se, fill = effect)) +
+    geom_col(position = position_dodge(0.9), color = "black", size=0.25) +
+    geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+    scale_fill_manual(values = cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete_wrap("") +
+    guides(fill = FALSE, size = FALSE) +
+    ggtitle(subcort_labels$ROIName[n]) +
+    coord_cartesian(ylim = c(-0.2, 0.55)) +
+    my_theme_text_smaller
+  
+  ## save plot
+  ggsave(str_c(here("viz", "images", "by_roi_subcortical", "HOSub_language_alice_md_"), nroi, "_roi_nolegend.pdf"), dpi=500, width = 5.8, height = 6, units = "cm")
+}
+```
+
+## Parcel overlap histograms
+
+See supplementary information.
+
+```{r}
+# quantifications of the overlap percentage between the atlas and functional language parcels
+
+# DKT
+atlas_overlap_average %>% filter(parcels == "DKT") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "dkt", "DKT_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+
+# Glasser
+atlas_overlap_average %>% filter(parcels == "Glasser") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "glasser", "Glasser_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+
+# HOC
+atlas_overlap_average %>% filter(parcels == "HOC") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "hoCort", "HOC_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+```
+
+## Atlas plots
+
+### Binary, responsive, and selective brain plots (with and without annotations)
+
+The braincollage() function is one of two functions sourced from the plot_brains.R script. Braincollage() is a wrapper for brainplot(), a complex function with pre-defined aesthetics and renderings. If intended to change the visual output, make changes to brainplot() and resource.
+
+```{r}
+#| include: false
+
+# create a list of images for each plot (from source plot_brains.R)
+
+# DKT
+braincollage(
+  df = dkt_plot_lang,  # df for aseg data
+  atlas = dkt  # ggseg atlas object for aseg
+)
+
+# Glasser
+braincollage(
+  df = glasser_plot_lang,  # df for aseg data
+  atlas = glasser  # ggseg atlas object for aseg
+)
+
+# HOC
+braincollage(
+  df = hoCort_plot_lang,  # df for aseg data
+  atlas = hoCort  # ggseg atlas object for aseg
+)
+
+# HOSC
+braincollage(
+  df = hoSubCort_plot_lang,  # df for aseg data
+  atlas = aseg  # ggseg atlas object for aseg
+)
+```
+
+### Parcel overlap histograms
+
+See supplementary information.
+
+```{r}
+# quantifications of the overlap percentage between the atlas and functional language parcels
+
+# DKT
+atlas_overlap_average %>% filter(parcels == "DKT") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "dkt", "DKT_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+
+# Glasser
+atlas_overlap_average %>% filter(parcels == "Glasser") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "glasser", "Glasser_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+
+# HOC
+atlas_overlap_average %>% filter(parcels == "HOC") %>%
+  ggplot(aes(x = OverlapPercentage)) + 
+  geom_histogram(bins = 10, aes(y = (..count..) / sum(..count..) * 100), fill = "indianred3", color = "black") +
+  scale_y_continuous("Percent of parcels \nshowing a given overlap") +
+  scale_x_continuous("Percent overlap\nwith functional parcels") +
+  coord_cartesian(ylim = c(0,60), xlim = c(-5, 105))+
+  my_theme_text_smaller
+ggsave(here("viz", "images", "hoCort", "HOC_overlap_histogram.pdf"), dpi=500, width = 8, height = 6, units = "cm")
+```
+
+### Main cortical figure (base)
+
+Populates the base images comprising the text's main cortical figure. This does not create the figure itself.
+
+```{r}
+#| eval: false
+### Layer 1
+
+p1 <- brainplot(
+      df = dkt_plot_lang,
+      atlas = dkt,
+      plot_type = "binary_dual",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "all",
+      folder = "main_cortical_figure",
+      file_name = "dkt"
+    )
+
+p2 <- brainplot(
+      df = hoCort_plot_lang,
+      atlas = hoCort,
+      plot_type = "binary_dual",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "all",
+      folder = "main_cortical_figure",
+      file_name = "hoCort"
+    ) 
+
+p3 <- brainplot(
+      df = glasser_plot_lang,
+      atlas = glasser,
+      plot_type = "binary_dual",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "all",
+      folder = "main_cortical_figure",
+      file_name = "glasser"
+    )
+
+
+### Layer 2 - Lang
+p4 <- brainplot(
+      df = dkt_plot_lang,
+      atlas = dkt,
+      plot_type = "selective",
+      task = "Lang",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "dkt_lang"
+    )
+
+p5 <- brainplot(
+      df = hoCort_plot_lang,
+      atlas = hoCort,
+      plot_type = "selective",
+      task = "Lang",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "hocort_lang"
+    )
+
+p6 <- brainplot(
+      df = glasser_plot_lang,
+      atlas = glasser,
+      plot_type = "selective",
+      task = "Lang",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "glasser_lang"
+    )
+
+
+### Layer 3 - Alice
+p7 <- brainplot(
+      df = dkt_plot_lang,
+      atlas = dkt,
+      plot_type = "selective",
+      task = "Alice",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "dkt_alice"
+    )
+
+p8 <- brainplot(
+      df = hoCort_plot_lang,
+      atlas = hoCort,
+      plot_type = "selective",
+      task = "Alice",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "hocort_alice"
+    )
+
+p9 <- brainplot(
+      df = glasser_plot_lang,
+      atlas = glasser,
+      plot_type = "selective",
+      task = "Alice",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = FALSE,
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "glasser_alice"
+    )
+
+
+### Layer 4 - MD
+p10 <- brainplot(
+      df = dkt_plot_lang,
+      atlas = dkt,
+      plot_type = "selective",
+      task = "MD",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "dkt_md"
+    )
+
+p11 <- brainplot(
+      df = hoCort_plot_lang,
+      atlas = hoCort,
+      plot_type = "selective",
+      task = "MD",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "hocort_md"
+    )
+
+p12 <- brainplot(
+      df = glasser_plot_lang,
+      atlas = glasser,
+      plot_type = "selective",
+      task = "MD",
+      plot_title = "",
+      subtitle = NULL,
+      legend_title = "Activation",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      view = "left_lateral",
+      folder = "main_cortical_figure",
+      file_name = "glasser_md"
+    )
+
+cortical_patch_plot <-  (p1 | p2 | p3) / (p4 | p5 | p6) / (p7 | p8 | p9) / (p10 | p11 | p12)
+  
+    ggsave(str_c(here("viz", "images", "main_cortical_figure_base"), ".pdf"), plot = cortical_patch_plot, dpi=500, width = 42, height = 48, units = "in")  # default: 18 x 14; patchwork: 32 x 26
+```
+
+### Main subcortical figure (base)
+
+Likewise, this only populates images included in the main subcortical figure within the text, *not* the full figure itself.
+
+```{r}
+#| eval: false
+subp1 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Amygdala",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      outline_regions = c("amygdala"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg1"
+    )
+
+subp2 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Thalamus",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      outline_regions = c("thalamus proper"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg2"
+    )
+
+subp3 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Hippocampus",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = TRUE,
+      outline_regions = c("hippocampus"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg3"
+    )
+
+subp4 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Putamen",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = FALSE,
+      # outline_regions = c("putamen"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg4"
+    )
+
+subp5 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Pallidum",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = FALSE,
+      # outline_regions = c("pallidum"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg5"
+    )
+
+subp6 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Caudate",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = FALSE,
+      # outline_regions = c("caudate"),
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg6"
+    )
+
+subp7 <- brainplot(
+      df = hoSubCort_plot_lang,
+      atlas = aseg,
+      plot_type = "binary_dual",
+      plot_title = "Accumbens",
+      subtitle = NULL,
+      legend_title = "",
+      legend_on = FALSE,
+      xlab = "",
+      ylab = "",
+      annotate = FALSE,
+      outline = FALSE,
+      view = "coronal",
+      folder = "main_subcortical_figure",
+      file_name = "aseg7"
+    )
+
+subcortical_patch_plot <- (plot_spacer() | subp1 | plot_spacer()) / 
+  (plot_spacer() | subp2 | plot_spacer()) /
+  (plot_spacer() | subp3 | plot_spacer()) /
+  (plot_spacer() | subp4 | plot_spacer()) /
+  (plot_spacer() | subp5 | plot_spacer()) /
+  (plot_spacer() | subp6 | plot_spacer()) /
+  (plot_spacer() | subp7 | plot_spacer())
+  
+    ggsave(str_c(here("viz", "images", "main_subcortical_figure_base"), ".pdf"), plot = subcortical_patch_plot, dpi=500, width = 42, height = 48, units = "in")  # default: 18 x 14; patchwork: 32 x 26
+```

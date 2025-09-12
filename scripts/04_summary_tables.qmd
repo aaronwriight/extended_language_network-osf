@@ -1,0 +1,615 @@
+---
+title: "Extended Language Network | 04_summary_tables"
+author: "Aaron Wright [`aawva@mit.edu`]"
+date: "03-28-2025"
+format: html
+editor: visual
+---
+
+## Overview
+
+**Purpose**: create descriptive summary tables characterizing the distribution of language parcels within the atlases
+
+**Input(s)**: `AtlasParcels.xlsx`, "the-human-language-effective-connectome-supplemental.xlsx" (a supplemental table provided extended Glasser atlas parcel names, from the original Glasser paper)
+
+**Process**: import and wrangle atlas parcellation data and produce counts of parcels under different conditions
+
+**Output(s)**: parcel tales under results/tables/`dkt` \| `glasser` \| `hoCort` \| `hoSubCort`/, as well as `Table1.xlsx`, the main summary table
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(openxlsx)
+```
+
+## Data
+
+```{r}
+# read and combine all atlas sheets into one data frame (from 02_stats)
+atlas_parcels <- bind_rows(
+  
+  ## Glasser
+  read_excel(here("data", "AtlasParcels.xlsx"), sheet = "Glasser") %>%
+    rename(roi = ROI) %>%
+    mutate(atlas = "Glasser") %>%
+    select(atlas, roi, lobe, hemi, ROIName),
+  
+  ## DKT
+  read_excel(here("data", "AtlasParcels.xlsx"), sheet = "DKT") %>%
+    rename(roi = ROI) %>%
+    mutate(atlas = "DKT") %>%
+    select(atlas, roi, lobe, hemi, ROIName),
+  
+  ## HOC
+  read_excel(here("data", "AtlasParcels.xlsx"), sheet = "HOCortical") %>%
+    rename(roi = ROI) %>%
+    mutate(atlas = "HOCortical") %>%
+    select(atlas, roi, lobe, hemi, ROIName),
+  
+  ## HOSC
+  read_excel(here("data", "AtlasParcels.xlsx"), sheet = "HOSubcortical") %>%
+    rename(roi = ROI) %>%
+    mutate(atlas = "HOSubcortical",
+           hemi = case_when(ROIName == "Brain-Stem" ~ NA_character_, TRUE ~ hemi),  # change brain stem hemi value to NA
+           lobe = NA
+    ) %>%
+    select(atlas, roi, lobe, hemi, ROIName)
+)
+
+# Atlas model stats and lang-responsive/selective parcels (also imported in 03_plots)
+# Atlas models
+roi_models_atlas_pairwise_condition <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_conditions.txt"), sep = "\t") %>% as_tibble()
+
+roi_models_atlas_pairwise_maineffects <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_maineffects.txt"), sep = "\t") %>% as_tibble()
+
+roi_models_atlas_pairwise_tasks <- read.delim(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_tasks.txt"), sep = "\t") %>% as_tibble()
+
+# ROIs language-responsive and language-selective
+lang_responsive_rois <- read.delim(here("results", "tables", "atlas_lang_responsive_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(lang_resp = 1) %>% select(-hemi, -ROIName)
+lang_selective_rois <- read.delim(here("results", "tables", "atlas_lang_selective_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(lang_sel = 1) %>% select(-hemi, -ROIName)
+```
+
+## Joining data frames
+
+```{r}
+# conditions df
+atlas_cond <- atlas_parcels %>%
+  left_join(roi_models_atlas_pairwise_condition, by = c('roi', 'atlas')) %>%
+  filter(!is.na(ROIName)) %>%
+  rename(parcel = 'ROIName') %>%
+  mutate(contrast = case_when(
+    contrast == 'Alice critical vs. baseline' ~ 'I>D',
+    contrast == 'Lang critical vs. baseline' ~ 'S>N',
+    contrast == 'MD critical vs. baseline' ~ 'H>E')) %>%
+  select(atlas, everything())
+
+# tasks df
+atlas_task <- atlas_parcels%>%
+  left_join(roi_models_atlas_pairwise_tasks, by = c('roi', 'atlas')) %>%
+  filter(!is.na(ROIName)) %>%
+  rename(parcel = 'ROIName') %>%
+  mutate(contrast = case_when(
+    contrast == 'criticalAlice vs. criticalMD' ~ 'I>H',
+    contrast == 'criticalLang vs. criticalMD' ~ 'S>H',
+    contrast == 'criticalAlice vs. criticalLang' ~ 'I>S')) %>%
+  filter(contrast != 'I>S') %>%
+  select(atlas, everything())
+
+# main effects df
+atlas_maineff <- atlas_parcels %>%
+  left_join(roi_models_atlas_pairwise_maineffects, by = c('roi', 'atlas')) %>%
+  filter(!is.na(ROIName)) %>%
+  rename(parcel = 'ROIName') %>%
+  mutate(contrast = case_when(
+    contrast == 'Alice critical' ~ 'I',
+    contrast == 'Alice baseline' ~ 'D',
+    contrast == 'Language critical' ~ 'S',
+    contrast == 'Language baseline' ~ 'N',
+    contrast == 'MD critical' ~ 'H',
+    contrast == 'MD baseline' ~ 'E')) %>%
+  select(atlas, everything())
+
+atlas_cond_task <- full_join(atlas_cond, atlas_task, by = c('roi', 'atlas', 'contrast'), suffix = c('.cond', '.task'), relationship = 'many-to-many')
+atlas_cond_task_maineff <- full_join(atlas_cond_task, atlas_maineff, by = c('roi', 'atlas', 'contrast'), suffix = c('', '.maineff'), relationship = 'many-to-many')
+
+# coalesce columns
+atlases_sorted <- atlas_cond_task_maineff %>%
+  mutate(
+    # coalesce columns from earlier joins
+    # e.g., combine data from Parcel.cond and Parcel.task into Parcel column
+    atlas = coalesce(atlas, atlas),
+    lobe = coalesce(lobe, lobe.cond, lobe.task),
+    roi = coalesce(roi, roi),
+    Parcel = coalesce(parcel, parcel.cond, parcel.task),
+    hemi = coalesce(hemi, hemi.cond, hemi.task),
+    contrast = coalesce(contrast, contrast),
+    estimate = coalesce(estimate, estimate.cond, estimate.task),
+    se = coalesce(se, se.cond, se.task),
+    df = coalesce(df, df.cond, df.task),
+    z_ratio = coalesce(z_ratio, z_ratio.cond, z_ratio.task),
+    p_value = coalesce(p_value, p_value.cond, p_value.task)
+  ) %>%
+  select(atlas, lobe, roi, Parcel, hemi, contrast, estimate, se, df, z_ratio, p_value) %>%
+  
+  ## create Localizer Task column, dependent upon contrast ID
+  mutate(`Localizer Task` = case_when(
+    contrast == 'S' ~ 'Language',
+    contrast == 'N' ~ 'Language',
+    contrast == 'S>N' ~ 'Language',
+    contrast == 'S>H' ~ 'Language',
+    contrast == 'I' ~ 'Alice',
+    contrast == 'D' ~ 'Alice',
+    contrast == 'I>D' ~ 'Alice',
+    contrast == 'I>H' ~ 'Alice',
+    contrast == 'H' ~ 'MD',
+    contrast == 'E' ~ 'MD',
+    contrast == 'H>E' ~ 'MD')) %>%
+  
+  ## create Contrast No. column
+  mutate(`Contrast No.` = case_when(
+    contrast == 'S' ~ '1',
+    contrast == 'N' ~ '2',
+    contrast == 'S>N' ~ '3',
+    contrast == 'S>H' ~ '4',
+    contrast == 'I' ~ '1',
+    contrast == 'D' ~ '2',
+    contrast == 'I>D' ~ '3',
+    contrast == 'I>H' ~ '4',
+    contrast == 'H' ~ '1',
+    contrast == 'E' ~ '2',
+    contrast == 'H>E' ~ '3')) %>%
+  
+  ## create Task No. column
+  mutate(`Task No.` = case_when(
+    contrast == 'S' ~ '1',
+    contrast == 'N' ~ '1',
+    contrast == 'S>N' ~ '1',
+    contrast == 'S>H' ~ '1',
+    contrast == 'I' ~ '2',
+    contrast == 'D' ~ '2',
+    contrast == 'I>D' ~ '2',
+    contrast == 'I>H' ~ '1',
+    contrast == 'H' ~ '3',
+    contrast == 'E' ~ '3',
+    contrast == 'H>E' ~ '3')) %>%
+  
+  ## reformat column names
+  rename(
+    Atlas = atlas,
+    ROI = roi,
+    Hemisphere = hemi,
+    `Lobe(s)` = lobe,
+    Contrast = contrast,
+    `Effect Size` = estimate,
+    Std.Error = se,
+    `z-score` = z_ratio,
+    `p-value` = p_value) %>%
+  
+  ## round numerical columns
+  mutate(
+    `Effect Size` = round(`Effect Size`, 2),
+    Std.Error = round(Std.Error, 2),
+    `z-score` = round(`z-score`, 2),
+    `p-value` = round(`p-value`, 3)) %>%
+  
+  ## capitalize values
+  mutate(Hemisphere = str_to_title(Hemisphere),
+         Parcel = str_to_title(Parcel)) %>%
+  
+  ## reorder columns
+  select(
+    Atlas,
+    `Contrast No.`,
+    `Task No.`,
+    ROI,
+    Hemisphere,
+    `Lobe(s)`,
+    Parcel,
+    `Localizer Task`,
+    Contrast,
+    `Effect Size`,
+    Std.Error,
+    `z-score`,
+    `p-value`)
+
+# engineer custom factors for sorting
+localizer_order = c('Language', 'Alice', 'MD')
+contrast_order = c('S', 'N', 'S>N', 'S>H', 'I', 'D', 'I>D', 'I>H', 'H', 'E', 'H>E')
+
+# sort columns
+parcels_table_all_atlases <- atlases_sorted %>%
+  arrange(
+    Atlas,
+    `Lobe(s)`,
+    ROI,
+    factor(`Localizer Task`, levels = localizer_order),
+    factor(Contrast, levels = contrast_order))
+```
+
+## Split into tables for responsive and selective parcels
+
+```{r}
+# responsive
+parcels_table_all_atlases_responsive <- parcels_table_all_atlases %>% semi_join(lang_responsive_rois, by = c(ROI = "roi", Atlas = "atlas")) %>%
+  # preserve sorting while dropping undesired columns
+  select(Atlas, Hemisphere:`p-value`)
+
+# selective
+parcels_table_all_atlases_selective <- parcels_table_all_atlases %>% semi_join(lang_selective_rois, by = c(ROI = "roi", Atlas = "atlas")) %>%
+  # preserve sorting while dropping undesired columns
+  select(Atlas, Hemisphere:`p-value`)
+
+# exclusive responsive regions (non-selective)
+parcels_table_all_atlases_responsive_non_selective <- parcels_table_all_atlases_responsive %>% anti_join(parcels_table_all_atlases_selective)
+
+# define the output directory
+out_dir <- here("results", "tables", "all_atlases")
+
+# create directory recursively if it doesn't exist
+if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
+# save full table and variants
+write.csv(parcels_table_all_atlases, file = file.path(out_dir, "parcels_table_all_atlases.csv"), row.names = FALSE)                            
+write.csv(parcels_table_all_atlases_responsive, file = file.path(out_dir, "all_atlases_responsive_parcels.csv"), row.names = FALSE)              
+write.csv(parcels_table_all_atlases_selective, file = file.path(out_dir, "all_atlases_selective_parcels.csv"), row.names = FALSE)                
+write.csv(parcels_table_all_atlases_responsive_non_selective, file = file.path(out_dir, "all_atlases_exclusive_responsive_parcels.csv"), row.names = FALSE)
+
+# =================================================================================
+# Table1 (main statistical table): atlas parcels values
+# =================================================================================
+
+# save "parcels_table_all_atlases" as "Table1" - this is the main comprehensive table for the study
+
+## drop unneeded columns (for publication purposes)
+Table1 <- parcels_table_all_atlases %>% select(-c(`Contrast No.`, `Task No.`, ROI))
+write.xlsx(Table1, file = here("results", "tables", "Table1.xlsx"), row.names = FALSE)
+```
+
+## Atlas-specific tables
+
+### Desikan-Killiany-Tourville (DKT)
+
+```{r}
+# dkt atlas - all regions
+parcels_table_dkt <- parcels_table_all_atlases %>% filter(Atlas == "DKT") %>%
+  select(- c(`Contrast No.`, `Task No.`, ROI))
+write.csv(parcels_table_dkt, file = here("results", "tables", "dkt", "dkt_all_parcels.csv"), row.names = FALSE)
+
+# dkt atlas - responsive regions
+parcels_table_dkt_responsive <- parcels_table_all_atlases_responsive %>% filter(Atlas == "DKT")
+write.csv(parcels_table_dkt_responsive, file = here("results", "tables", "dkt", "dkt_all_responsive_parcels.csv"), row.names = FALSE)
+
+# dkt atlas - selective regions
+parcels_table_dkt_selective <- parcels_table_all_atlases_selective %>% filter(Atlas == "DKT")
+write.csv(parcels_table_dkt_selective, file = here("results", "tables", "dkt", "dkt_selective_parcels.csv"), row.names = FALSE)
+
+# dkt atlas exclusive responsive regions (non-selective)
+parcels_table_dkt_responsive_non_selective <- parcels_table_dkt_responsive %>% anti_join(parcels_table_dkt_selective)
+write.csv(parcels_table_dkt_responsive_non_selective, file = here("results", "tables", "dkt", "dkt_exclusive_responsive_parcels.csv"), row.names = FALSE)
+```
+
+### Harvard-Oxford Cortical (hoCort)
+
+```{r}
+# hoCort atlas - all regions
+parcels_table_hoCort <- parcels_table_all_atlases %>% filter(Atlas == "HOCortical") %>%
+  select(- c(`Contrast No.`, `Task No.`, ROI))
+write.csv(parcels_table_hoCort, file = here("results", "tables", "hoCort", "hoCort_all_parcels.csv"), row.names = FALSE)
+
+# hoCort atlas - responsive regions
+parcels_table_hoCort_responsive <- parcels_table_all_atlases_responsive %>% filter(Atlas == "HOCortical")
+write.csv(parcels_table_hoCort_responsive, file = here("results", "tables", "hoCort", "hoCort_all_responsive_parcels.csv"), row.names = FALSE)
+
+# hoCort atlas - selective regions
+parcels_table_hoCort_selective <- parcels_table_all_atlases_selective %>% filter(Atlas == "HOCortical")
+write.csv(parcels_table_hoCort_selective, file = here("results", "tables", "hoCort", "hoCort_selective_parcels.csv"), row.names = FALSE)
+
+# hoCort atlas exclusive responsive regions (non-selective)
+parcels_table_hoCort_responsive_non_selective <- parcels_table_hoCort_responsive %>% anti_join(parcels_table_hoCort_selective)
+write.csv(parcels_table_hoCort_responsive_non_selective, file = here("results", "tables", "hoCort", "hoCort_exclusive_responsive_parcels.csv"), row.names = FALSE)
+```
+
+### Glasser
+
+```{r}
+# get extended glasser parcel names
+glasser_extended_names <- read_excel(here("misc", "the-human-language-effective-connectome-supplemental.xlsx")) %>% 
+  rename(`Parcel (Full)` = RegionLongName) %>% 
+  mutate(`Parcel (Full)` = str_replace_all(`Parcel (Full)`, "_", " ")) %>% 
+  select(Region, `Parcel (Full)`)
+
+# glasser atlas - all regions 
+parcels_table_glasser <- parcels_table_all_atlases %>%
+  filter(Atlas == "Glasser") %>%
+  mutate(Parcel = str_to_upper(Parcel)) %>%  # create a new uppercase column for Parcel
+  left_join(
+    glasser_extended_names %>% mutate(Region = str_to_upper(Region)),  # uppercase Region
+    by = c(Parcel = "Region")
+  ) %>%
+  select(- c(`Contrast No.`, `Task No.`, ROI)) %>%
+  select(Atlas, Hemisphere, `Lobe(s)`, Parcel, `Parcel (Full)`, everything())
+
+write.csv(parcels_table_glasser, file = here("results", "tables", "glasser", "glasser_all_parcels.csv"), row.names = FALSE)
+
+# glasser atlas - responsive regions
+parcels_table_glasser_responsive <- parcels_table_all_atlases_responsive %>%
+  filter(Atlas == "Glasser") %>%
+  mutate(Parcel = str_to_upper(Parcel)) %>%  # create a new uppercase column for Parcel
+  left_join(
+    glasser_extended_names %>% mutate(Region = str_to_upper(Region)),  # uppercase Region
+    by = c(Parcel = "Region")
+  ) %>%
+  select(Atlas, Hemisphere, `Lobe(s)`, Parcel, `Parcel (Full)`, everything())
+
+write.csv(parcels_table_glasser_responsive, file = here("results", "tables", "glasser", "glasser_all_responsive_parcels.csv"), row.names = FALSE)
+
+# glasser atlas - selective regions
+parcels_table_glasser_selective <- parcels_table_all_atlases_selective %>% filter(Atlas == "Glasser") %>%
+  mutate(Parcel = str_to_upper(Parcel)) %>%  # create a new uppercase column for Parcel
+  left_join(
+    glasser_extended_names %>% mutate(Region = str_to_upper(Region)),  # uppercase Region
+    by = c("Parcel" = "Region")
+  )%>%
+  select(Atlas, Hemisphere, `Lobe(s)`, Parcel, `Parcel (Full)`, everything())
+
+write.csv(parcels_table_glasser_selective, file = here("results", "tables", "glasser", "glasser_selective_parcels.csv"), row.names = FALSE)
+
+# glasser atlas exclusive responsive regions (non-selective)
+parcels_table_glasser_responsive_non_selective <- parcels_table_glasser_responsive %>% anti_join(parcels_table_glasser_selective)
+write.csv(parcels_table_glasser_responsive_non_selective, file = here("results", "tables", "glasser", "glasser_exclusive_responsive_parcels.csv"), row.names = FALSE)
+```
+
+### Harvard-Oxford Subcortical (hoSubCort)
+
+```{r}
+# hoSubCort atlas - all regions
+parcels_table_hoSubCort <- parcels_table_all_atlases %>%
+  filter(Atlas == "HOSubcortical") %>%
+  # exclude unnecessary regions
+  filter(!Parcel %in% c("Left Cerebral White Matter",
+                     "Left Cerebral Cortex",
+                     "Left Lateral Ventricle",
+                     "Brain-Stem",
+                     "Right Cerebral White Matter",
+                     "Right Cerebral Cortex",
+                     "Right Lateral Ventricle")) %>%
+  select(- c(`Contrast No.`, `Task No.`, ROI, `Lobe(s)`))
+
+write.csv(parcels_table_hoSubCort, file = here("results", "tables", "hoSubCort", "hoSubCortall_parcels.csv"), row.names = FALSE)
+
+# hoSubCort atlas - responsive regions
+parcels_table_hoSubCort_responsive <- parcels_table_all_atlases_responsive %>% 
+  filter(Atlas == "HOSubcortical") %>%
+  filter(!Parcel %in% c("Left Cerebral White Matter",
+                        "Left Cerebral Cortex",
+                        "Left Lateral Ventricle",
+                        "Brain-Stem",
+                        "Right Cerebral White Matter",
+                        "Right Cerebral Cortex",
+                        "Right Lateral Ventricle")) %>%
+  select(- `Lobe(s)`)
+
+write.csv(parcels_table_hoSubCort_responsive, file = here("results", "tables", "hoSubCort", "hoSubCort_all_responsive_parcels.csv"), row.names = FALSE)
+
+# hoSubCort atlas - selective regions
+parcels_table_hoSubCort_selective <- parcels_table_all_atlases_selective %>% 
+  filter(Atlas == "HOSubcortical") %>% 
+  filter(!Parcel %in% c("Left Cerebral White Matter",
+                        "Left Cerebral Cortex",
+                        "Left Lateral Ventricle",
+                        "Brain-Stem",
+                        "Right Cerebral White Matter",
+                        "Right Cerebral Cortex",
+                        "Right Lateral Ventricle")) %>%
+  select(- `Lobe(s)`)
+
+write.csv(parcels_table_hoSubCort_selective, file = here("results", "tables", "hoSubCort", "hoSubCort_selective_parcels.csv"), row.names = FALSE)
+
+# hoSubCort atlas exclusive responsive regions (non-selective)
+parcels_table_hoSubCort_responsive_non_selective <- parcels_table_hoSubCort_responsive %>% anti_join(parcels_table_hoSubCort_selective)
+write.csv(parcels_table_hoSubCort_responsive_non_selective, file = here("results", "tables", "hoSubCort", "hoSubCort_exclusive_responsive_parcels.csv"), row.names = FALSE)
+
+```
+
+## A useful filtering tool for displaying atlas parcels
+
+Display specific atlas parcel packages by hemisphere and lobe - replace with desired parameters grepl allows for searching without needing exact matches (e.g., searching "Temporal" will find "Temporal" and "Temporal, Occipital" if matches exists)
+
+Example usage: parcel_list \<- "Parcel1, Parcel2, Parcel3" get_lobes_for_parcels(NA, parcels_table_test) \# will print an error get_lobes_for_parcels("", parcels_table_test) \# will print an error get_lobes_for_parcels(parcel_list, parcels_table_test) \# will work as expected
+
+### Searching functions
+
+```{r}
+# get all distinct lobe/region combinations (for identifying parcel packages to search for) - can filter by atlas as needed
+parcels_table_all_atlases %>%
+  filter(Atlas == "Glasser") %>%
+  distinct(`Lobe(s)`) %>%
+  pull(`Lobe(s)`) %>%
+  { 
+    lobes <- .
+    if (any(is.na(lobes))) lobes <- c(lobes, "NA") # Include "NA" as a string in the list
+    lobes
+  } %>%
+  strsplit(", ") %>%
+  unlist() %>%
+  unique() %>%
+  sort() %>%
+  paste(collapse = ", ") %>%
+  print()
+
+
+# get all distinct lobes for each parcel in a list (use string output from filtering above)
+get_lobes_for_parcels <- function(parcel_string, parcels_table) {
+  ## check for NA or empty string
+  if (is.na(parcel_string) || trimws(parcel_string) == "") {
+    stop("No parcels available for lobe search.")
+  }
+  
+  ## split the input string into individual parcel names
+  parcels <- strsplit(parcel_string, ",\\s*")[[1]]
+  
+  ## iterate over each parcel and retrieve the corresponding lobes
+  result <- lapply(parcels, function(parcel) {
+    lobes <- parcels_table %>%
+      filter(Parcel == parcel) %>%
+      distinct(`Lobe(s)`) %>%
+      pull(`Lobe(s)`) %>%
+      {if (length(.) == 0) "NA" else paste(., collapse = ", ")}
+    
+    ## return the parcel with its lobes
+    paste0(parcel, ": ", lobes)
+  })
+  
+  ## combine results into a single string with proper newlines
+  cat(paste(result, collapse = "\n"))
+}
+```
+
+### Parcel search
+
+Main searching algorithm (pass to get_lobes_for_parcels)
+
+```{r}
+# responsive
+parcels_table_glasser_responsive %>% filter(Hemisphere == "Left", grepl("Frontal", `Lobe(s)`)) %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print() -> parcels_list_responsive
+# selective
+parcels_table_glasser_selective %>% filter(Hemisphere == "Left", grepl("Frontal", `Lobe(s)`)) %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print() -> parcels_list_selective
+# responsive exclusive
+parcels_table_glasser_responsive_non_selective %>% filter(Hemisphere == "Left", grepl("Frontal", `Lobe(s)`)) %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print() -> parcels_list_responsive_non_selective
+
+# modified for glasser (full parcel names)
+parcels_table_glasser_responsive %>% filter(Hemisphere == "Left", grepl("Temporal", `Lobe(s)`)) %>% distinct(`Parcel (Full)`) %>% pull(`Parcel (Full)`) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+parcels_table_glasser_selective %>% filter(Hemisphere == "Left", grepl("Temporal", `Lobe(s)`)) %>% distinct(`Parcel (Full)`) %>% pull(`Parcel (Full)`) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+parcels_table_glasser_responsive_non_selective %>% filter(Hemisphere == "Left", grepl("Temporal", `Lobe(s)`)) %>% distinct(`Parcel (Full)`) %>% pull(`Parcel (Full)`) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+
+# modified for hoSubCort (no lobe column)
+parcels_table_hoSubCort_responsive %>% filter(Hemisphere == "Left") %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+parcels_table_hoSubCort_selective %>% filter(Hemisphere == "Left") %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+parcels_table_hoSubCort_responsive_non_selective %>% filter(Hemisphere == "Left") %>% distinct(Parcel) %>% pull(Parcel) %>% {if (length(.) == 0) NA else paste(., collapse = ", ")} %>% print()
+
+# search
+get_lobes_for_parcels(parcels_list_selective, parcels_table_glasser_selective)
+```
+
+## Parcels counts per atlas
+
+```{r}
+# helper: print parcels grouped by single lobe, duplicating multi-lobe parcels and preserving º/†
+format_grouped_by_lobe <- function(df) {
+  if (nrow(df) == 0) return("    None\n\n")
+  
+  if (!"Lobe(s)" %in% names(df)) df$`Lobe(s)` <- NA_character_
+  
+  df2 <- df %>%
+    mutate(`Lobe(s)` = as.character(`Lobe(s)`),
+           original_lobes = `Lobe(s)`) %>%
+    mutate(original_lobes = ifelse(is.na(original_lobes) | original_lobes == "", NA_character_, original_lobes)) %>%
+    rowwise() %>%
+    mutate(
+      n_lobes = ifelse(is.na(original_lobes), 0L, length(strsplit(original_lobes, ",\\s*")[[1]])),
+      marker = ifelse(n_lobes == 2, "º", ifelse(n_lobes >= 3, "†", "")),
+      ParcelMarked = paste0(Parcel, marker)
+    ) %>%
+    ungroup() %>%
+    mutate(Lobe = ifelse(is.na(original_lobes), "Unspecified", original_lobes)) %>%
+    tidyr::separate_rows(Lobe, sep = ",\\s*") %>%
+    mutate(Lobe = ifelse(is.na(Lobe) | Lobe == "", "Unspecified", Lobe))
+  
+  groups <- df2 %>%
+    group_by(Lobe) %>%
+    summarize(parcels = paste(sort(unique(ParcelMarked)), collapse = ", "), .groups = "drop") %>%
+    arrange(Lobe)
+  
+  out_lines <- paste0("    [", groups$Lobe, "]: ", groups$parcels, "\n")
+  paste(out_lines, collapse = "\n")
+}
+
+# main display function
+print_parcels_by_hemisphere <- function(atlas_name, tbl_responsive, tbl_selective) {
+  cat("\n====================================================\n")
+  cat("Atlas:", atlas_name, "\n")
+  cat("====================================================\n\n")
+  
+  for (hemi in c("Left", "Right")) {
+    resp <- tbl_responsive %>% filter(Hemisphere == hemi) %>% distinct(Parcel, `Lobe(s)`)
+    sel  <- tbl_selective  %>% filter(Hemisphere == hemi) %>% distinct(Parcel, `Lobe(s)`)
+    excl <- resp %>% filter(!Parcel %in% sel$Parcel)
+    
+    cat("----------------------------------------------------\n")
+    cat(" Hemisphere:", hemi, "\n")
+    cat("----------------------------------------------------\n\n")
+    
+    cat("  Responsive parcels (n =", nrow(resp), "):\n\n", format_grouped_by_lobe(resp), "\n")
+    cat("  Selective parcels (n =", nrow(sel), "):\n\n", format_grouped_by_lobe(sel), "\n")
+    cat("  Exclusive responsive parcels (n =", nrow(excl), "):\n\n", format_grouped_by_lobe(excl), "\n")
+  }
+}
+
+# example calls (swap in any atlas tables you want)
+print_parcels_by_hemisphere("Glasser", parcels_table_glasser_responsive, parcels_table_glasser_selective)
+
+print_parcels_by_hemisphere("DKT",     parcels_table_dkt_responsive,     parcels_table_dkt_selective)
+
+print_parcels_by_hemisphere("hoCort",  parcels_table_hoCort_responsive,  parcels_table_hoCort_selective)
+
+# =================================================================================
+# Table2 (supplementary atlas table): unique selective and responsive parcels
+# =================================================================================
+
+# helper: summarize parcel counts, duplicating parcels across single-lobe rows and preserving º/†
+# helper: summarize parcel counts, duplicating parcels across single-lobe rows and preserving º/†
+summarize_parcels <- function(df, atlas_name, label) {
+  
+  # ensure all necessary columns exist and are character
+  for (col in c("Parcel", "Lobe(s)", "Hemisphere")) {
+    if (!col %in% names(df)) df[[col]] <- "Unspecified"
+    df[[col]] <- as.character(df[[col]])
+  }
+  
+  df2 <- df %>%
+    mutate(original_lobes = `Lobe(s)`) %>%
+    # compute number of lobes for marker
+    rowwise() %>%
+    mutate(
+      n_lobes = ifelse(is.na(original_lobes) | original_lobes == "", 0L, length(strsplit(original_lobes, ",\\s*")[[1]])),
+      marker = ifelse(n_lobes == 2, "º", ifelse(n_lobes >= 3, "†", "")),
+      ParcelMarked = paste0(Parcel, marker)
+    ) %>%
+    ungroup() %>%
+    # duplicate parcels across lobes
+    mutate(Lobe = ifelse(is.na(original_lobes) | original_lobes == "", "Unspecified", original_lobes)) %>%
+    tidyr::separate_rows(Lobe, sep = ",\\s*") %>%
+    mutate(Lobe = ifelse(Lobe == "" | is.na(Lobe), "Unspecified", Lobe))
+  
+  df2 %>%
+    group_by(Lobe, Hemisphere) %>%
+    summarize(Parcels = paste(sort(unique(ParcelMarked)), collapse = ", "), .groups = "drop") %>%
+    mutate(`Lobe(s)` = Lobe,
+           Atlas = paste0(atlas_name, " (", label, ")")) %>%
+    select(Atlas, `Lobe(s)`, Hemisphere, Parcels)
+}
+
+# build summaries for selective parcels
+table2_dkt_sel     <- summarize_parcels(parcels_table_dkt_selective, "DKT", "Selective")
+table2_hocort_sel  <- summarize_parcels(parcels_table_hoCort_selective, "HOCortical", "Selective")
+table2_glasser_sel <- summarize_parcels(parcels_table_glasser_selective, "Glasser", "Selective")
+table2_hosc_sel    <- summarize_parcels(parcels_table_hoSubCort_selective, "HOSubcortical", "Selective")
+
+# build summaries for exclusive responsive (non-selective) parcels
+table2_dkt_excl     <- summarize_parcels(parcels_table_dkt_responsive_non_selective, "DKT", "Exclusive Responsive")
+table2_hocort_excl  <- summarize_parcels(parcels_table_hoCort_responsive_non_selective, "HOCortical", "Exclusive Responsive")
+table2_glasser_excl <- summarize_parcels(parcels_table_glasser_responsive_non_selective, "Glasser", "Exclusive Responsive")
+table2_hosc_excl    <- summarize_parcels(parcels_table_hoSubCort_responsive_non_selective, "HOSubcortical", "Exclusive Responsive")
+
+# combine into one table
+Table2 <- bind_rows(
+  table2_dkt_sel, table2_hocort_sel, table2_glasser_sel, table2_hosc_sel,
+  table2_dkt_excl, table2_hocort_excl, table2_glasser_excl, table2_hosc_excl
+)
+
+# save to excel
+write.xlsx(Table2, file = here("results", "tables", "Table2.xlsx"), row.names = FALSE)
+```

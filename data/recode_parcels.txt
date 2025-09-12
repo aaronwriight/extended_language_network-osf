@@ -1,0 +1,34 @@
+ROI	ROI_new	hemisphere	label
+11	1	left	orbital IFG
+6	2	left	superior IFG
+3	3	left	MFG / PrecG
+22	4	left	ventral temporal pole
+2	5	left	anterior temporal
+1	6	left	posterior temporal
+18	7		orbitofrontal medial cortex
+16	8		anterior medial SFG
+8	9		medial SFG
+25	10	left	precuneus
+26	11	left	precuneus / post ACC
+17	12	left	medial occipital cortex
+27	13	left	parahippocampal gyrus
+28	14	left	BTLA
+21	15	right	orbital IFG
+24	16	right	superior IFG
+20	17	right	MFG /PrecG
+7	18	right	temporal pole
+5	19	right	anterior temporal
+4	20	right	posterior temporal
+14	21	right	occipital pole
+13	22	right	inferior occipital cortex
+10	23	right	Crus II / VIIb
+12	24	right	VIIb / VIIIa
+15	25	right	VI / Crus I
+19	26	right	VI / Crus I
+23	27	left	Crus II / VIIb
+9			
+29			
+30			
+31			
+32			
+33			

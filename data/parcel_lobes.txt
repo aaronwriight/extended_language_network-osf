@@ -1,0 +1,4 @@
+lobe_mapping <- data.frame(
+  region = c("caudal middle frontal", "entorhinal", "Angular Gyrus", ...),
+  lobe = c("Frontal", "Temporal", "Parietal", ...)
+)
