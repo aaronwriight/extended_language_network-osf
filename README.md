@@ -170,6 +170,21 @@ Dropbox/
 ...
 ```
 
+## Results
+```    
+tables/
+├── Table1.xlsx    # The full table of atlas parcel profiles (not the same as Table1 in the manuscript)
+
+├── Table2.xlsx    # List of parcels that contain language-responsive and language-selective fROIs in the three standard cortical atlases: the DKT, Harvard-Oxford Cortical, and Glasser atlases
+
+├── TableS1.xlsx   # Functional responses to the Language, Alice (auditory language) and MD tasks in the GcSS language parcels. 
+
+├── TableS2.xlsx   #
+...
+```
+
+Table 1 Functional language parcels. 
+
 ## Project notebook
 
 A comprehensive supplemental notebook including useful, high-level and technical information related to project conception, data collection, writing, variables of interest, and other collaborative measures is available here: [Extended Language Network Project Notebook](https://docs.google.com/document/d/1VlPDzdPwrCiZxzdEW85W0W4HrCAmWpEJuvteumJfLPQ/edit?usp=share_link)

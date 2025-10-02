@@ -1,0 +1,23 @@
+roi	ROIName	hemi
+1	IFG orbital	left
+2	IFG	left
+3	MFG / PrecG 	left
+4	anterior temporal  	left
+5	posterior temporal  	left
+6	IFG orbital	right
+7	IFG	right
+8	MFG / PrecG  	right
+9	anterior temporal  	right
+10	posterior temporal  	right
+11	temporal pole  	left
+12	BTLA   	left
+14	superior precuneus	left
+17	temporal pole  	right
+20	medial frontal cortex	bilateral
+21	medial anterior SFG	bilateral
+22	medial SFG	bilateral
+23	Crus II / VIIb	left
+24	Crus I / II / VIIb	right
+25	VIIb / VIIIa 	right
+26	posterior VI / Crus I	right
+27	lateral VI / Crus I	right

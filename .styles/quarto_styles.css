@@ -1,0 +1,47 @@
+/* quarto_styles.css — for Quarto HTML rendering */
+
+/* style all inline code (e.g., `like this`) */
+code {
+  background-color: #f5f5f5;      /* soft gray background */
+  color: #859901;                  /* solarized green text */
+  border-radius: 4px;              /* rounded corners */
+  padding: 2px 4px;                /* inner spacing */
+  font-family: monospace;
+  font-size: 0.95em;
+}
+
+/* ensure code in list items gets styled too */
+li code {
+  margin-left: 2px;
+}
+
+/* style links */
+a {
+  color: #2AA198;                  /* solarized cyan */
+  text-decoration: none;           /* remove underline */
+}
+
+/* on hover, underline to show interactivity */
+a:hover {
+  text-decoration: underline;
+}
+
+/* MATLAB chunks */
+code.language-matlab {
+  background-color: #F6EFE9;       /* Merino */
+  color: #FC5049;                  /* Sunset Orange */
+  font-family: Consolas, monospace;
+  font-size: 0.95em;
+}
+
+/* R chunks */
+code.language-r {
+  background-color: #FCE53A;       /* Bright Sun */
+  color: #133B40;                  /* Elephant */
+}
+
+/* text chunks */
+code.language-text {
+  background-color: #8AD1D8;       /* Monte Carlo */
+  color: #42C098;                  /* Puerto Rico */
+}

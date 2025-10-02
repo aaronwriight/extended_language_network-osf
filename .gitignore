@@ -78,8 +78,8 @@ README.html
 /data/reading_language_localizer/
 /data/spatial_WM_localizer/
 
-
 # folders produced from script (to save space)
 /viz/images/*/
+/results/stats/*model_stats/
 /results/tables/*/
 /.quarto/

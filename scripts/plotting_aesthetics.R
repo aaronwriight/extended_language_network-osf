@@ -1,7 +1,7 @@
 # plotting_aesthetics
 
 library(stringr)
-library(ggplot2)
+library(tidyverse)
 
 fontsize <- 8
 
@@ -14,7 +14,7 @@ cols_fill <- c("sentences" = "firebrick2",
               "hard vWM" = "steelblue4",
               "easy vWM" = "lightskyblue2")
 
-# custom scale that wraps x-axis labels at 16 chars
+# # custom scale that wraps x-axis labels at 16 chars
 scale_x_discrete_wrap <- function(name = waiver(), width = 16, ...) {
   ggplot2::scale_x_discrete(
     name   = name,   # axis title

@@ -1,7 +1,7 @@
 ---
 title: "Extended Language Network | 03_plots"
 author: "Aaron Wright [`aawva@mit.edu`], Agata Wolna [`awolna@mit.edu`]"
-date: "08-29-2025"
+date: "2025-08-29"
 format: html
 editor: visual
 ---
@@ -55,14 +55,19 @@ lang_selective_rois <- read.delim(here("results", "tables", "atlas_lang_selectiv
 
 ```{r}
 # create a column that assigns 1 to language selective and responsive parcels and 0 to the remaining parcels
-roi_models_atlas <- roi_models_atlas %>% left_join(lang_responsive_rois) %>% left_join(lang_selective_rois) %>% separate(contrast, into = "task") %>% rename(parcels = atlas)
+roi_models_atlas <- roi_models_atlas %>%
+  left_join(lang_responsive_rois) %>%
+  left_join(lang_selective_rois) %>%
+  separate(contrast, into = "task") %>%
+  rename(parcels = atlas)
 
-# read in parcel decoding files
-parcels <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% rename(roi=ROI)
+# read in subcortical data
 hosubcortical_parcels <- read_excel(here("data", "AtlasParcels.xlsx"), sheet ="HOSubcortical") %>% rename(roi=ROI)
 
 # Atlas parcels (cortical) overlap with GcSS parcels
-atlas_overlap_average <- read.delim(here("data", "voxel_overlap_results_average.txt")) %>% as_tibble() %>% rename(roi = ROI_Atlas) %>% 
+atlas_overlap_average <- read.delim(here("data", "voxel_overlap_results_average.txt")) %>%
+  as_tibble() %>%
+  rename(roi = ROI_Atlas) %>% 
   mutate(parcels = ifelse(Atlas == "HOCortical_2mm.nii", "HOC", ifelse(Atlas == "DKT_in_MNI_sm2.nii", "DKT", "Glasser"))) %>% 
   select(-Atlas, -ROI_GcSS)
 
@@ -74,9 +79,20 @@ effects <- data.frame(
 # rename columns
 colnames(effects) <- c("task", "condition", "effect")
 
-# join effects with gss_means_plots
-gss_means_plots_n772 <- gss_means_plots_n772 %>% left_join(effects) %>% left_join(parcels) %>% mutate(model="n=772")
-gss_means_plots_n86 <- gss_means_plots_n86 %>% left_join(effects) %>% left_join(parcels) %>% mutate(model="n=86")
+# read in parcel decoding files
+parcels <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% select(-ROI) %>% rename("roi" = "ROI_new")
+
+# join effects + gss_means_plots - n772
+gss_means_plots_n772 <- gss_means_plots_n772 %>%
+  left_join(effects, by = c("task", "condition")) %>%
+  left_join(parcels, by = "roi") %>%
+  mutate(model = "n=772")
+
+# join effects + gss_means_plots - n86
+gss_means_plots_n86 <- gss_means_plots_n86 %>%
+  left_join(effects, by = c("task", "condition")) %>%
+  left_join(parcels, by = "roi") %>%
+  mutate(model = "n=86")
 ```
 
 ## Pre-processing atlas data
@@ -299,9 +315,9 @@ for(cfg in plot_configs){
   
   # ROI names
   labels <- df %>%
-    select(ROI_new, hemisphere, label) %>%
-    filter(!is.na(ROI_new)) %>%
-    arrange(ROI_new) %>%
+    select(roi, hemisphere, label) %>%
+    filter(!is.na(roi)) %>%
+    arrange(roi) %>%
     unique()
   
   # cast columns as factors for plotting
@@ -327,17 +343,17 @@ for(cfg in plot_configs){
   # by-ROI plots
   for(nroi in 1:27){
 
-    df %>% filter(ROI_new == nroi) %>% 
+    df %>% filter(roi == nroi) %>% 
       ggplot(aes(x = task, y = emmean, ymin = lowCI, ymax = highCI, fill = effect)) +
       geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
       geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
       scale_fill_manual(values = cols_fill) +
       scale_y_continuous('Effect size') +
-      scale_x_discrete_wrap("") +
+      scale_x_discrete_wrap("task") +
       guides(fill = FALSE, size = FALSE) +
       ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
       coord_cartesian(ylim =c(-2, 5)) +
-      my_theme_text_smaller
+      my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
 
     ## save plot — here() takes folder and file as separate args
     ggsave(
@@ -350,21 +366,27 @@ for(cfg in plot_configs){
 # n=772-specific, language-selective inset plots
 
 # BTLA Cerebellum language-selective: small inset figures
-# 14 = BTLA, 23 = right Crus I / II / VIIb, 24 = right VIIb / VIIIa, 27 = left Crus II / VIIb
+# 12 = BTLA, 24 = right Crus I / II / VIIb, 25 = right VIIb / VIIIa, 23 = left Crus II / VIIb
 
-inset_rois <- c(14, 23, 24, 27)
+inset_rois <- c(12, 24, 25, 23)
 
 for(inset_roi in inset_rois){
 
-  gss_means_plots_n772 %>% filter(ROI_new == inset_roi) %>% 
+  gss_means_plots_n772 %>% filter(roi == inset_roi) %>%
+    mutate(
+      effect = factor(effect, c("sentences", "nonwords", "intact speech", 
+                                "degraded speech", "hard vWM", "easy vWM")),
+      task   = factor(task, c("Lang", "Alice", "MD"))
+    ) %>%
     ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
     geom_col(position = position_dodge(0.9), color="black", size=0.25) +
     geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
     scale_fill_manual(values=cols_fill) +
     scale_y_continuous(name=NULL, labels=NULL) +
+    scale_x_discrete_wrap("task") +
     guides(fill = FALSE, size = FALSE) +
     coord_cartesian(ylim=c(-0.1, 1)) +
-    my_theme_text_smaller
+    my_theme_text_smaller + theme(axis.text.x = element_text(size = 4, vjust = 1, hjust = 1, angle = 70))
 
   ## save plot
   ggsave(str_c(here("viz", "images", "by_roi_cortical_n772", "GSS_language_alice_md_"), inset_roi, "_roi_inset.pdf"), 
@@ -379,7 +401,7 @@ for(inset_roi in inset_rois){
 means_all_n86_comparison <- rbind(gss_means_plots_n772, gss_means_plots_n86)
 
 # set ROI labels
-labels <- means_all_n86_comparison %>% select(ROI_new, hemisphere, label) %>% filter(!is.na(ROI_new)) %>% arrange(ROI_new) %>% unique()
+labels <- means_all_n86_comparison %>% select(roi, hemisphere, label) %>% filter(!is.na(roi)) %>% arrange(roi) %>% unique()
 
 means_all_n86_comparison$effect <- factor(means_all_n86_comparison$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
 means_all_n86_comparison$label <- factor(means_all_n86_comparison$label, labels$label %>% unique())
@@ -387,18 +409,18 @@ means_all_n86_comparison$task <- factor(means_all_n86_comparison$task, c("Lang",
 
 # by-ROI GSS
 for(nroi in 1:27){
-  means_all_n86_comparison %>% filter(ROI_new==nroi) %>% 
+  means_all_n86_comparison %>% filter(roi == nroi) %>%
     ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
     geom_col(position = position_dodge(0.9), color="black", size=0.25) +
     geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
     scale_fill_manual(values=cols_fill) +
     scale_y_continuous('Effect size') +
-    scale_x_discrete_wrap("") +
+    scale_x_discrete_wrap("task") +
     guides(fill = FALSE, size = FALSE) +
     facet_grid(~model, scales="free_x") +
     ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
     coord_cartesian(ylim=c(-2, 5)) +
-    my_theme_text_smaller_noborders
+    my_theme_text_smaller_noborders + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
   ggsave(str_c(here("viz", "images", "by_roi_cortical_n772_n86_comparison", "GCSS_language_alice_md_"), nroi, "_roi_nolegend.pdf"), dpi=500, width = 5.8, height = 6, units = "cm")
 }
 ```
@@ -464,7 +486,7 @@ roi_subcortical %>%
   geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
   scale_fill_manual(values = cols_fill) +
   scale_y_continuous('Effect size') +
-  scale_x_discrete_wrap("parcel") +
+  scale_x_discrete_wrap("task") +
   facet_grid(~hemi, scales = "free_x") +
   my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
 
@@ -490,11 +512,11 @@ for(nroi in subcort_rois){ # uses within groups
     geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
     scale_fill_manual(values = cols_fill) +
     scale_y_continuous('Effect size') +
-    scale_x_discrete_wrap("") +
+    scale_x_discrete_wrap("task") +
     guides(fill = FALSE, size = FALSE) +
     ggtitle(subcort_labels$ROIName[n]) +
     coord_cartesian(ylim = c(-0.2, 0.55)) +
-    my_theme_text_smaller
+    my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
   
   ## save plot
   ggsave(str_c(here("viz", "images", "by_roi_subcortical", "HOSub_language_alice_md_"), nroi, "_roi_nolegend.pdf"), dpi=500, width = 5.8, height = 6, units = "cm")
