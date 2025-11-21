@@ -1,0 +1,276 @@
+---
+title: "Extended Language Network | 06_supplemental_MDfROIs"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2025-10-23"
+format: html
+---
+
+## Overview
+
+**Purpose**: To compute and visualize correlations between preprocessing pipelines and runs (DefaultMNI_PlusStructural, DefaultNative_Functional, FreeSurfer).
+
+**Input(s)**: 
+- whole_brain_lang_estimates.txt (raw mean response estimates across pipelines and runs).
+
+**Process**: Tidying and reshaping data, computing correlations between preprocessing pipelines and between runs, and plotting scatterplots comparing their estimates.
+
+**Output(s)**: 
+- Correlation tables printed in console, and scatterplot PDFs saved in viz/images/preproc_comparison/.
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(lme4)
+library(emmeans)
+
+source(here("scripts", "run_parcel_models.R"))
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
+```
+
+## Data
+
+```{r}
+# read in data
+parcels <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% rename(roi=ROI)
+hosubnames <- read_excel(here("data", "AtlasParcels.xlsx"), sheet="HOSubcortical") %>% rename(roi=ROI) %>% select(roi, hemi, ROIName) %>% mutate(atlas="HOSubcortical")
+
+# MD fROIs
+ssDatasetList=c("MDfROIs")
+
+loc_detail_imp <- data.frame(matrix(ncol = 6, nrow = 0))
+for(dataset in ssDatasetList){
+  print(dataset)
+  ssList = dir(path = str_c("data/", dataset, "/FuncLoc"))
+  for(file in ssList){
+    temp_file = read.csv(str_c("data/", dataset, "/FuncLoc/", file, "/spm_ss_mROI_data.details.EffectSize.csv"))
+    temp_file = temp_file %>% cbind(file) %>% cbind(dataset)
+    loc_detail_imp = loc_detail_imp %>% rbind(temp_file)
+  }
+}
+
+loc_detail <- loc_detail_imp %>% as_tibble() %>% separate(file, into=c("task", "localizer", "parcels")) %>% 
+  filter(LocalizerSize>0)
+
+effects <- c("I", "D", "S", "N", "H", "E")
+crit_effect <- c("I", "S", "H")
+
+loc_detail <- loc_detail %>% filter(Effect%in%effects) %>% mutate(condition=ifelse(Effect%in%crit_effect, "critical", "baseline"))
+
+# write table
+write.table(loc_detail, here("results", "tables", "MDfROIs_data.txt"), quote = F, row.names = F, col.names = T)
+```
+
+## Statistics
+
+### MDfROIs - GSS parcels
+
+```{r}
+gcssroi_excluded <- c(9,29,30,31,32,33)
+data_gcss <- loc_detail %>%
+  filter(parcels == "GcSS", !(ROI %in% gcssroi_excluded))
+
+results_gcss <- run_parcel_models(
+  df = data_gcss,
+  parcels_filter = "GcSS",
+  target_data = "MDfROIs"
+)
+```
+
+### MDfROIs - subcortical parcels
+
+```{r}
+data_hos <- loc_detail %>% filter(parcels == "HOSubcortical", !is.na(ROI))
+
+results_hos <- run_parcel_models(
+  df = data_hos,
+  parcels_filter = "HOSubcortical",
+  target_data = "MDfROIs_HOSubcortical"
+)
+```
+
+## Plotting
+
+```{r}
+## PLOTTING HERE
+## PLOTTING
+
+#### 3.1. GSS parcels ####
+roi_models_gcss_all_means <- read.table(
+  here("results", "stats", "MDfROIs_model_stats", "MDfROIs_roi_models_all_means.txt"),
+  header = TRUE, sep = "\t"
+)
+roi_models_gcss_pairwise_condition <- read.table(
+  here("results", "stats", "MDfROIs_model_stats", "MDfROIs_roi_models_pairwise_conditions.txt"),
+  header = TRUE, sep = "\t"
+)
+
+means_plots <- roi_models_gcss_all_means
+
+# read in parcel decoding files
+effects <- data.frame(
+  task = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  condition = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  effect = c("degraded speech", "nonwords", "easy vWM",
+             "intact speech", "sentences", "hard vWM")
+)
+
+means_plots <- means_plots %>%
+  left_join(effects) %>%
+  left_join(parcels) %>%
+  select(-roi) %>% # drop old rois
+  rename("roi" = "ROI_new") # rename recoded parcels
+
+labels <- means_plots %>%
+  select(roi, hemisphere, label) %>%
+  filter(!is.na(roi)) %>%
+  arrange(roi) %>%
+  unique()
+
+means_plots$effect <- factor(means_plots$effect,
+  c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM")
+)
+means_plots$label <- factor(means_plots$label, labels$label %>% unique())
+means_plots$task <- factor(means_plots$task, c("Lang", "Alice", "MD"))
+
+### Combined plot
+means_plots %>%
+  mutate(hemilabel = str_c(hemisphere, " ", label)) %>%
+  filter(hemisphere == "left", label != "cerebellum") %>%
+  ggplot(aes(x = label, y = emmean, ymin = emmean - se, ymax = emmean + se, fill = effect)) +
+  geom_col(position = position_dodge(0.9), color = "black") +
+  geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+  scale_fill_manual(values = cols_fill) +
+  scale_y_continuous("Effect size") +
+  scale_x_discrete_wrap("parcel") +
+  coord_cartesian(ylim = c(-0.5, 4)) +
+  my_theme_text_smaller +
+  theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+
+# ensure output directory exists
+outdir_main <- here("viz", "images", "supplemental", "combined_plots")
+if (!dir.exists(outdir_main)) dir.create(outdir_main, recursive = TRUE)
+
+ggsave(
+  filename = here("viz", "images", "supplemental", "combined_plots", "GSS_MDfROIs_statistical_language_alice_md_left_cortical_combined.jpg"),
+  dpi = 500, width = 30, height = 16, units = "cm"
+)
+
+### By ROI GcSS plots
+outdir_byroi <- here("viz", "images", "supplemental", "by_roi", "MDfROIs")
+if (!dir.exists(outdir_byroi)) dir.create(outdir_byroi, recursive = TRUE)
+
+for (nroi in na.omit(unique(means_plots$roi))) {
+  if (!is.na(nroi)) {
+    p <- means_plots %>%
+      filter(roi == nroi) %>%
+      ggplot(aes(x = task, y = emmean, ymin = lowCI, ymax = highCI, fill = effect)) +
+      geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
+      geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+      scale_fill_manual(values = cols_fill) +
+      scale_y_continuous("Effect size") +
+      scale_x_discrete("", labels = NULL) +
+      guides(fill = FALSE, size = FALSE) +
+      ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
+      coord_cartesian(ylim = c(-0.5, 4.2)) +
+      my_theme_text_smaller
+
+    ggsave(
+      filename = here("viz", "images", "supplemental", "by_roi", "MDfROIs",
+                      str_c("GSS_MDfROIs_language_alice_md_", nroi, "_roi_nolegend.pdf")),
+      plot = p,
+      dpi = 500, width = 3.8, height = 4, units = "cm"
+    )
+  }
+}
+
+
+#### 3.2. Harvard-Oxford Subcortical parcels ####
+roi_models_atlas_all_means <- read.table(
+  here("results", "stats", "MDfROIs_HOSubcortical_model_stats", "MDfROIs_HOSubcortical_roi_models_all_means.txt"),
+  header = TRUE, sep = "\t"
+)
+roi_models_atlas_pairwise_condition <- read.table(
+  here("results", "stats", "MDfROIs_HOSubcortical_model_stats", "MDfROIs_HOSubcortical_roi_models_pairwise_conditions.txt"),
+  header = TRUE, sep = "\t"
+)
+
+# hemi ROIname breaks here
+means_plots_hos <- roi_models_atlas_all_means %>%
+  left_join(hosubnames, by = "roi") %>%
+  mutate(ROIName = str_remove(ROIName, "^\\S+\\s+"), atlas = coalesce(atlas.x, atlas.y)) %>%
+  select(-se, -lowCI, -highCI, -atlas.x, -atlas.y)
+
+se <- roi_models_atlas_pairwise_condition %>%
+  select(contrast, se, roi) %>%
+  separate(contrast, into = "task")
+
+means_plots_hos <- means_plots_hos %>% left_join(se)
+
+# add decoding labels
+means_plots_hos <- means_plots_hos %>%
+  left_join(effects) %>%
+  filter(!ROIName %in% c("Cerebral White Matter", "Cerebral Cortex", "Lateral Ventricle", "Brain-Stem"))
+
+labels <- means_plots_hos %>%
+  select(roi, hemi, ROIName) %>%
+  filter(!is.na(roi)) %>%
+  arrange(roi) %>%
+  unique()
+
+means_plots_hos$effect <- factor(means_plots_hos$effect,
+  c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM")
+)
+means_plots_hos$ROIName <- factor(means_plots_hos$ROIName, labels$ROIName %>% unique())
+means_plots_hos$task <- factor(means_plots_hos$task, c("Lang", "Alice", "MD"))
+
+### Combined plot (per ROI)
+means_plots_hos %>%
+  filter(!is.na(ROIName)) %>%
+  ggplot(aes(x = hemi, y = emmean, ymin = emmean - se, ymax = emmean + se, fill = effect)) +
+  geom_col(position = position_dodge(0.9), color = "black") +
+  geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+  scale_fill_manual(values = cols_fill) +
+  scale_y_continuous("Effect size") +
+  scale_x_discrete("subcortical ROI") +
+  facet_grid(~ROIName, scales = "free_x") +
+  coord_cartesian(ylim = c(-0.1, 0.5)) +
+  my_theme_text_smaller
+
+ggsave(
+  filename = here("viz", "images", "supplemental", "combined_plots", "HOSubcortical_MDfROIs_statistical_language_alice_md_left_cortical_combined.jpg"),
+  dpi = 500, width = 30, height = 16, units = "cm"
+)
+
+### By ROI HOSubcortical plots
+outdir_byroi_hos <- here("viz", "images", "supplemental", "by_roi", "MDfROIs")
+if (!dir.exists(outdir_byroi_hos)) dir.create(outdir_byroi_hos, recursive = TRUE)
+
+for (nroi in na.omit(unique(means_plots_hos$ROIName))) {
+  if (!is.na(nroi)) {
+    p <- means_plots_hos %>%
+      filter(ROIName == nroi) %>%
+      ggplot(aes(x = hemi, y = emmean, ymin = emmean - se, ymax = emmean + se, fill = effect)) +
+      geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
+      geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+      scale_fill_manual(values = cols_fill) +
+      scale_y_continuous("Effect size") +
+      scale_x_discrete("", labels = NULL) +
+      guides(fill = FALSE, size = FALSE) +
+      facet_grid(~hemi, scales = "free_x") +
+      ggtitle(nroi) +
+      coord_cartesian(ylim = c(-0.1, 0.5)) +
+      my_theme_text_smaller +
+      theme(strip.text = element_blank())
+
+    ggsave(
+      filename = here("viz", "images", "supplemental", "by_roi", "MDfROIs",
+                      str_c("HOSubcortical_MDfROIs_language_alice_md_", nroi, "_left_right_roi_nolegend.pdf")),
+      plot = p,
+      dpi = 500, width = 6.8, height = 4, units = "cm"
+    )
+  }
+}
+```

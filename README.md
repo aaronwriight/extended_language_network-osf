@@ -4,7 +4,7 @@ This repository contains code and data accompanying:
 
 Wolna, A., Wright, A., Casto, C., Lipkin, B., & Fedorenko, E. (2025). The extended language network: Language selective brain areas whose contributions to language remain to be discovered. *bioRxiv*, 2025-04. https://www.biorxiv.org/content/10.1101/2025.04.02.646835v2
 
-![](viz/images/ext_lang_net_brain.png)
+![](viz/images/supplemental/ext_lang_net_brain.png)
 
 ## Project configuration & environment
 
@@ -41,6 +41,7 @@ Below is a high-level overview of the directories and files imporant for reprodu
 *`Italicized`* items are noteworthy items omitted or hidden by the .gitignore
 
 ***NB***: some files necessary for processing/analysis have been purposefully excluded from the external repository for such reasons as file size issues, anonymity concerns, or otherwise.
+
 ```         
 extended_language_network/
 ├── data/                             # raw data input to script
@@ -124,7 +125,7 @@ Tags: `functional localizers`, `language network`, `neuroscience of language`, `
 
 A comprehensive, internal, private workspace
 
-```    
+```         
 GitHub-internal/
 ├── data/*
 ├── results/*
@@ -137,7 +138,7 @@ GitHub-internal/
 
 Public-access, mirror repo (subset) containing publication-ready items
 
-```
+```         
 extended_language_network-osf/ | OSF Storage/
 ├── data/
 │   ├── AtlasParcels.xlsx
@@ -161,7 +162,7 @@ extended_language_network-osf/ | OSF Storage/
 
 Large file storage, supplemental data ***not*** natively on GitHub or OSF
 
-```
+```         
 Dropbox/
 ├── detail_all.txt
 ├── first_level_contrast_maps/
@@ -171,7 +172,8 @@ Dropbox/
 ```
 
 ## Results
-```    
+
+```         
 tables/
 ├── Table1.xlsx    # The full table of atlas parcel profiles (not the same as Table1 in the manuscript)
 
@@ -183,7 +185,7 @@ tables/
 ...
 ```
 
-Table 1 Functional language parcels. 
+Table 1 Functional language parcels.
 
 ## Project notebook
 

@@ -3,7 +3,6 @@ title: "Extended Language Network | 04_summary_tables"
 author: "Aaron Wright [`aawva@mit.edu`]"
 date: "2025-09-25"
 format: html
-editor: visual
 ---
 
 ## Overview
@@ -29,8 +28,7 @@ source(here("scripts", "build_parcels_table.R")) # helper function to build comp
 
 ## Data
 
-Parcels dfs must follow column format:
-atlas, roi, lobe, hemi, ROIName
+Parcels dfs must follow column format: atlas, roi, lobe, hemi, ROIName
 
 ```{r}
 # atlas
@@ -111,7 +109,9 @@ gss86_lang_selective_rois <- read.delim(here("results", "tables", "gss86_lang_se
 ### Build parcels tables
 
 ```{r}
-# atlas table
+# --- build base tables ---
+
+# atlas table (all atlas parcels including HO subcortical)
 parcels_table_all_atlases <- build_parcels_table(
   atlas_parcels,
   roi_models_atlas_pairwise_condition,
@@ -119,15 +119,29 @@ parcels_table_all_atlases <- build_parcels_table(
   roi_models_atlas_pairwise_maineffects
 )
 
-# gss_n772 table
+# extract HO Subcortical parcels from atlas table
+hoSubCort_table <- parcels_table_all_atlases %>%
+  filter(Atlas == "HOSubcortical") %>%
+  filter(!Parcel %in% c(
+    "Left Cerebral White Matter",
+    "Left Cerebral Cortex",
+    "Left Lateral Ventricle",
+    "Brain-Stem",
+    "Right Cerebral White Matter",
+    "Right Cerebral Cortex",
+    "Right Lateral Ventricle"
+  ))
+
+# gss_n772 table (append HO Subcortical parcels)
 parcels_table_all_gss_n772 <- build_parcels_table(
   gss_parcels,
   roi_models_gss_n772_pairwise_condition,
   roi_models_gss_n772_pairwise_tasks,
   roi_models_gss_n772_pairwise_maineffects
-)
+) %>%
+  bind_rows(hoSubCort_table)
 
-# gss_n86 table
+# gss_n86 table (HO SubCort not included)
 parcels_table_all_gss_n86 <- build_parcels_table(
   gss_parcels,
   roi_models_gss_n86_pairwise_condition,
@@ -187,39 +201,73 @@ write.csv(parcels_table_gss86_selective, file = file.path(gss86_dir, "gss86_sele
 write.csv(parcels_table_gss86_responsive_non_selective, file = file.path(gss86_dir, "gss86_exclusive_responsive_parcels.csv"), row.names = FALSE)
 ```
 
-### Save Tables TableO2A, TableO2B, and Table1 (main summary table: functional GSS parcels)
+### Save Tables TableO2A, TableO2B, and Table1 (main summary table)
 
 ```{r}
-# =================================================================================
-# TableO2A (main supplementary statistical table): gss parcels values (n = 772)
-# =================================================================================
+# ===================================================================================================================================
+# TableO2A (main supplementary statistical table): COMPREHENSIVE GSS parcels (n=772) and COMPREHENSIVE HOSubCort parcels
+#   - TableO2A contains ALL functional GSS parcels (responsive and selective, n=772) and ALL HOSubCort parcels.
+# ===================================================================================================================================
 TableO2A <- parcels_table_all_gss_n772 %>% select(-c(`Contrast No.`, `Task No.`, ROI))
-write.xlsx(TableO2A, file = here("results", "tables", "TableO2A_n772.xlsx"), row.names = FALSE)
+write.xlsx(TableO2A, file = here("results", "tables", "TableO2A.xlsx"), row.names = FALSE)
 
-# =================================================================================
-# TableO2B (secondary supplementary statistical table): gss parcels values (n = 86)
-# =================================================================================
+# ===================================================================================================================================
+# TableO2B (secondary supplementary statistical table): COMPREHENSIVE GSS parcels (n=86)
+#   - TableO2B contains ALL functional GSS parcels (responsive and selective, n=86) and NO HOSubCort parcels.
+# ===================================================================================================================================
 TableO2B <- parcels_table_all_gss_n86 %>% select(-c(`Contrast No.`, `Task No.`, ROI))
-write.xlsx(TableO2B, file = here("results", "tables", "TableO2B_n86.xlsx"), row.names = FALSE)
+write.xlsx(TableO2B, file = here("results", "tables", "TableO2B.xlsx"), row.names = FALSE)
 
-# =================================================================================
-# Table1 (main summary table): unique functional GSS parcels (responsive and selective, n=772 and n=86)
-# =================================================================================
+# ===================================================================================================================================
+# Table1 (main summary table): UNIQUE functional GSS parcels (n=772) and UNIQUE HOSubCort parcels
+#   - Table1 contains UNIQUE functional GSS parcels (responsive and selective, n=772) and UNIQUE HOSubCort parcels.
+#   - For HOSubCort parcels, selectivity/responsiveness is based on the original atlas logic (using lang_responsive_rois/lang_selective_rois).
+# ===================================================================================================================================
 
-# mark selective and exclusive responsive parcels
-gss772_table1 <- parcels_table_all_gss_n772 %>%
+# Split GSS n=772 table into GSS and HOSubCort
+gss772_parcels_gss <- parcels_table_all_gss_n772 %>%
+  filter(Atlas != "HOSubcortical")
+gss772_parcels_hosc <- parcels_table_all_gss_n772 %>%
+  filter(Atlas == "HOSubcortical")
+
+# For GSS parcels (not HOSubCort), use GSS selectivity logic as before
+gss772_table1_gss <- gss772_parcels_gss %>%
   mutate(
     Selectivity = case_when(
       ROI %in% parcels_table_gss772_selective$ROI ~ "Selective",
       ROI %in% parcels_table_gss772_responsive_non_selective$ROI ~ "Exclusive Responsive",
-      TRUE ~ NA_character_  # or "Unlabeled"
+      TRUE ~ NA_character_
     )
   ) %>%
-  distinct(ROI, Atlas, Hemisphere, Parcel, Selectivity, .keep_all = TRUE) %>% 
+  distinct(ROI, Atlas, Hemisphere, Parcel, Selectivity, .keep_all = TRUE) %>%
   select(ROI, Atlas, Hemisphere, Parcel, Selectivity)
 
-# write out
-write.xlsx(gss772_table1, file = here("results", "tables", "Table1.xlsx"), row.names = FALSE)
+# For HOSubCort parcels, use original atlas logic (lang_responsive_rois/lang_selective_rois)
+# Need to join on correct ROI mapping: ROI in gss772_parcels_hosc == roi in lang_responsive_rois/lang_selective_rois, with Atlas == HOSubcortical
+# If ROI names are not matching, create a temporary mapping column (here, ROI in both should match)
+
+hosc_rois <- gss772_parcels_hosc %>%
+  # Add selectivity labels using original atlas logic
+  left_join(lang_selective_rois %>% filter(atlas == "HOSubcortical") %>% select(roi, lang_sel), by = c("ROI" = "roi")) %>%
+  left_join(lang_responsive_rois %>% filter(atlas == "HOSubcortical") %>% select(roi, lang_resp), by = c("ROI" = "roi")) %>%
+  mutate(
+    Selectivity = case_when(
+      !is.na(lang_sel) ~ "Selective",
+      is.na(lang_sel) & !is.na(lang_resp) ~ "Exclusive Responsive",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  distinct(ROI, Atlas, Hemisphere, Parcel, Selectivity, .keep_all = TRUE) %>%
+  select(ROI, Atlas, Hemisphere, Parcel, Selectivity)
+
+# Bind the two together for Table1
+Table1 <- bind_rows(
+  gss772_table1_gss,
+  hosc_rois
+)
+
+# Write out (leave write.xlsx call unchanged)
+write.xlsx(Table1, file = here("results", "tables", "Table1.xlsx"), row.names = FALSE)
 ```
 
 ## Atlas-specific tables
@@ -368,7 +416,7 @@ write.csv(parcels_table_hoSubCort_responsive_non_selective, file = here("results
 
 ```
 
-## Parcels counts per atlas <- table S2
+## Parcels counts per atlas \<- table S2
 
 ```{r}
 # helper: print parcels grouped by single lobe, duplicating multi-lobe parcels and preserving º/†
@@ -467,43 +515,102 @@ summarize_parcels <- function(df, atlas_name, label) {
 }
 
 # build summaries for selective parcels
+# Table2: UNIQUE atlas parcels (DKT, Glasser, HoCort), HOSubCort **excluded**
+parcels_table_all_atlases_no_hosc <- parcels_table_all_atlases %>% filter(Atlas != "HOSubcortical")
+parcels_table_all_atlases_responsive_no_hosc <- parcels_table_all_atlases_responsive %>% filter(Atlas != "HOSubcortical")
+parcels_table_all_atlases_selective_no_hosc <- parcels_table_all_atlases_selective %>% filter(Atlas != "HOSubcortical")
+parcels_table_all_atlases_responsive_non_selective_no_hosc <- parcels_table_all_atlases_responsive_non_selective %>% filter(Atlas != "HOSubcortical")
+
 table2_dkt_sel     <- summarize_parcels(parcels_table_dkt_selective, "DKT", "Selective")
 table2_hocort_sel  <- summarize_parcels(parcels_table_hoCort_selective, "HOCortical", "Selective")
 table2_glasser_sel <- summarize_parcels(parcels_table_glasser_selective, "Glasser", "Selective")
-table2_hosc_sel    <- summarize_parcels(parcels_table_hoSubCort_selective, "HOSubcortical", "Selective")
+# table2_hosc_sel    <- summarize_parcels(parcels_table_hoSubCort_selective, "HOSubcortical", "Selective") # EXCLUDED
 
 # build summaries for exclusive responsive (non-selective) parcels
 table2_dkt_excl     <- summarize_parcels(parcels_table_dkt_responsive_non_selective, "DKT", "Exclusive Responsive")
 table2_hocort_excl  <- summarize_parcels(parcels_table_hoCort_responsive_non_selective, "HOCortical", "Exclusive Responsive")
 table2_glasser_excl <- summarize_parcels(parcels_table_glasser_responsive_non_selective, "Glasser", "Exclusive Responsive")
-table2_hosc_excl    <- summarize_parcels(parcels_table_hoSubCort_responsive_non_selective, "HOSubcortical", "Exclusive Responsive")
+# table2_hosc_excl    <- summarize_parcels(parcels_table_hoSubCort_responsive_non_selective, "HOSubcortical", "Exclusive Responsive") # EXCLUDED
 
-# combine into one table
+# combine into one table (HOSubcortical excluded)
 Table2 <- bind_rows(
-  table2_dkt_sel, table2_hocort_sel, table2_glasser_sel, table2_hosc_sel,
-  table2_dkt_excl, table2_hocort_excl, table2_glasser_excl, table2_hosc_excl
+  table2_dkt_sel, table2_hocort_sel, table2_glasser_sel,
+  table2_dkt_excl, table2_hocort_excl, table2_glasser_excl
 )
 
-# =================================================================================
-# Table2 (atlas summary table): selective and exclusive responsive atlas parcels
-# =================================================================================
+# ===================================================================================================================================
+# Table2 (atlas summary table): UNIQUE atlas parcels (DKT, Glasser, HoCort), HOSubCort **excluded**
+#   - Table2 contains unique selective and exclusive responsive atlas parcels from DKT, Glasser, and HoCort atlases.
+#   - HOSubCort (subcortical) parcels are excluded.
+# ===================================================================================================================================
 
 write.xlsx(Table2, file = here("results", "tables", "Table2.xlsx"), row.names = FALSE)
 
-# =================================================================================
-# TableO1 (comprehensive atlas table): all atlas parcels (comprehensive)
-# =================================================================================
+# ===================================================================================================================================
+# TableO1 (comprehensive atlas table): COMPREHENSIVE atlas parcels (DKT, Glasser, HoCort), HOSubCort **excluded**
+#   - TableO1 contains all comprehensive atlas parcels from DKT, Glasser, and HoCort atlases.
+#   - HOSubCort (subcortical) parcels are excluded.
+# ===================================================================================================================================
 
-write.xlsx(parcels_table_all_atlases, file = here("results", "tables", "TableO1.xlsx"), row.names = FALSE)
+write.xlsx(parcels_table_all_atlases_no_hosc, file = here("results", "tables", "TableO1.xlsx"), row.names = FALSE)
 ```
 
-## A useful filtering tool for displaying atlas parcels
+## Quick checks
+
+### Selective and responsive parcel counts by table
+
+```{r}
+# ---------------------------
+# Atlas tables (Table2 / TableO1)
+# ---------------------------
+atlas_tables <- list(
+  DKT = parcels_table_dkt,
+  Glasser = parcels_table_glasser,
+  HOCortical = parcels_table_hoCort
+)
+
+cat("=== Unique parcels in Atlas tables (Table2 / TableO1) ===\n")
+for (atlas_name in names(atlas_tables)) {
+  tbl <- atlas_tables[[atlas_name]]
+  n_total <- length(unique(tbl$Parcel))
+  n_sel <- length(unique(tbl %>% semi_join(parcels_table_all_atlases_selective_no_hosc, by = c("Parcel", "Hemisphere")) %>% pull(Parcel)))
+  n_resp <- length(unique(tbl %>% semi_join(parcels_table_all_atlases_responsive_no_hosc, by = c("Parcel", "Hemisphere")) %>% pull(Parcel)))
+  cat(sprintf("%s: total unique=%d, selective=%d, responsive=%d\n", atlas_name, n_total, n_sel, n_resp))
+}
+
+# ---------------------------
+# GSS n=772 + HOSubCort (Table1 / TableO2A)
+# ---------------------------
+cat("\n=== Unique parcels in GSS n=772 + HOSubCort (Table1 / TableO2A) ===\n")
+cat("GSS n=772:\n")
+cat("  selective:", length(unique(parcels_table_gss772_selective$Parcel)), "\n")
+cat("  responsive:", length(unique(parcels_table_gss772_responsive$Parcel)), "\n")
+cat("  exclusive responsive:", length(unique(parcels_table_gss772_responsive_non_selective$Parcel)), "\n")
+
+cat("HOSubCort:\n")
+cat("  selective:", length(unique(parcels_table_hoSubCort_selective$Parcel)), "\n")
+cat("  responsive:", length(unique(parcels_table_hoSubCort_responsive$Parcel)), "\n")
+cat("  exclusive responsive:", length(unique(parcels_table_hoSubCort_responsive_non_selective$Parcel)), "\n")
+
+cat("Table1 combined (GSS + HOSubCort):\n")
+cat("  total unique parcels:", length(unique(Table1$Parcel)), "\n")
+cat("  selective:", sum(Table1$Selectivity == "Selective", na.rm = TRUE), "\n")
+cat("  exclusive responsive:", sum(Table1$Selectivity == "Exclusive Responsive", na.rm = TRUE), "\n")
+
+# ---------------------------
+# GSS n=86 (TableO2B)
+# ---------------------------
+cat("\n=== Unique parcels in GSS n=86 (TableO2B) ===\n")
+cat("  selective:", length(unique(parcels_table_gss86_selective$Parcel)), "\n")
+cat("  responsive:", length(unique(parcels_table_gss86_responsive$Parcel)), "\n")
+cat("  exclusive responsive:", length(unique(parcels_table_gss86_responsive_non_selective$Parcel)), "\n")
+```
+
+### Searching functions
 
 Display specific atlas parcel packages by hemisphere and lobe - replace with desired parameters grepl allows for searching without needing exact matches (e.g., searching "Temporal" will find "Temporal" and "Temporal, Occipital" if matches exists)
 
 Example usage: parcel_list \<- "Parcel1, Parcel2, Parcel3" get_lobes_for_parcels(NA, parcels_table_test) \# will print an error get_lobes_for_parcels("", parcels_table_test) \# will print an error get_lobes_for_parcels(parcel_list, parcels_table_test) \# will work as expected
-
-### Searching functions
 
 ```{r}
 # get all distinct lobe/region combinations (for identifying parcel packages to search for) - can filter by atlas as needed

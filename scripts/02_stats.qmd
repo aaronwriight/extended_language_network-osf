@@ -3,7 +3,6 @@ title: "Extended Language Network | 02_stats"
 author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
 date: "2025-08-29"
 format: html
-editor: visual
 ---
 
 ## Overview
@@ -35,14 +34,25 @@ source(here("scripts", "run_parcel_models.R"))
 data_all <- read.delim(here("data", "detail_all.txt")) # ALL participants
 ```
 
-## Parcel stats
+## Tidying and raw data descriptive statistics
 
-Group-constrained specific-subject parcellation method (see Fedorenko et al., 2010 for a description of the approach).
+Compute short, summarizing statistics (means and SDs by conditions / tasks / parcels) for GSS and atlas parcels, saving them in dataframes for future use in the pipeline.
 
-### Parcel model: gss parcels n=772 (full)
+### GSS parcels
 
 ```{r}
 #| eval: false
+#| 
+# create a data frame to define task effects
+effects <- data.frame(
+  column1 = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  column2 = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  column3 = c("degraded speech", "nonwords", "easy vWM", "intact speech", "sentences", "hard vWM"))
+# rename columns
+colnames(effects) <- c("task", "condition", "effect")
+
+# --- GSS parcels ---
+
 # import GSS parcels
 gcssroi_excluded <- c(9, 29, 30, 31, 32, 33) # exclude unnecessary parcels before recoding
 
@@ -72,64 +82,90 @@ data_gcss_recoded <- data_gcss %>% left_join(gss_parcels_recoded, by = "ROI") %>
   select(-ROI) %>% # drop old parcel numbers
   rename(ROI = ROI_new) # rename new, recoded parcel numbers
 
+# save intermediate recoded data for use in later scripts
+write_csv(data_gcss_recoded, here("results", "tables", "gss_raw_data_detail_all_recoded.csv")) # ALL participants' raw data, with parcels attached
+
+# join with effects + parcels
+data_all_recoded_full <- data_gcss_recoded %>%
+  left_join(effects, by = c("task", "condition"))
+  # rename(roi = ROI, hemisphere = hemi, label = ROIName)
+
+data_all_recoded_gss_full <- data_all_recoded_full %>%
+  rename(
+    roi = ROI,
+    hemisphere = hemi,
+    label = ROIName
+    ) %>%
+  group_by(task, condition, roi, hemisphere, label, effect) %>%
+  summarise(
+    emmean = mean(EffectSize, na.rm = TRUE),
+    se     = sd(EffectSize, na.rm = TRUE) / sqrt(n()),
+    lowCI  = emmean - qt(0.975, df = n() - 1) * se,
+    highCI = emmean + qt(0.975, df = n() - 1) * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    atlas = "GSS",
+    model = "n=772",
+    # enforce factor order to control sorting
+    task = factor(task, levels = c("Alice", "Lang", "MD")),
+    condition = factor(condition, levels = c("baseline", "critical"))
+  ) %>%
+  # order the rows within each roi in your desired sequence
+  arrange(roi, hemisphere, label, condition, task) %>%
+  relocate(task, condition, emmean, se, lowCI, highCI, roi, atlas, effect, hemisphere, label, model)
+
+write_csv(data_all_recoded_gss_full, here("results", "tables", "gss_raw_data_detail_all_recoded_descriptive_stats.csv")) # ALL participants' raw data, with parcels attached
+```
+
+### Atlas parcels
+
+```{r}
+# --- atlas parcels ---
+
+# read in the atlas-level raw data
+data_all_atlas_raw <- read_delim(here("data", "detail_all.txt"), delim = "\t") %>% 
+  filter(parcels %in% c("DKT", "Glasser", "HOCortical", "HOSubcortical"))
+
+# join with effects (task-condition-effect mappings)
+data_all_atlas_full <- data_all_atlas_raw %>%
+  left_join(effects, by = c("task", "condition")) %>%
+  group_by(task, condition, roi = ROI, parcels, Effect, effect) %>%
+  summarise(
+    emmean = mean(EffectSize, na.rm = TRUE),
+    se     = sd(EffectSize, na.rm = TRUE) / sqrt(n()),
+    lowCI  = emmean - qt(0.975, df = n() - 1) * se,
+    highCI = emmean + qt(0.975, df = n() - 1) * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = "Atlas",
+    task = factor(task, levels = c("Lang", "Alice", "MD")),
+    condition = factor(condition, levels = c("baseline", "critical")),
+    effect = factor(effect, c("sentences", "nonwords", "intact speech", 
+                              "degraded speech", "hard vWM", "easy vWM"))
+  ) %>%
+  arrange(parcels, roi, condition, task)
+
+write_csv(data_all_atlas_full, here("results", "tables", "atlas_raw_data_detail_all_descriptive_stats.csv")) # ALL participants' raw data, with parcels attached
+
+```
+
+## Parcel statistical models
+
+Group-constrained specific-subject parcellation method (see Fedorenko et al., 2010 for a description of the approach).
+
+### Parcel model: gss parcels n=772 (full)
+
+``` {r}
 # set df to be used in n=772 parcel model
 data_gcss_n772 <- data_gcss_recoded
-
-# save intermediate recoded data for use in later scripts
-write_csv(data_gcss_recoded, here("results", "tables", "gss_data_recoded.csv"))
 
 # run parcel model (gss, n=772)
 run_parcel_models(data_gcss_n772,
                   parcels_filter="GcSS",
                   target_data="gss_n772",
-                  diagnostics=TRUE)
-```
-
-### Parcel model: gss parcels n=86 (subset)
-
-```{r}
-#| eval: false
-
-# subset for data of participants having completed all three tasks (does not yet compute new df)
-data_gcss_uid <- data_gcss_recoded %>% filter(localizer!="Alice") %>% 
-  separate(Subject, into = "uid", sep = "_", remove = FALSE)
-
-# data, secondary n check 
-data_gcss_uid %>%
-  select(uid, task, localizer) %>%
-  unique() %>%
-  group_by(uid) %>%
-  count() %>% 
-  group_by(n) %>%
-  count()
-
-# subset list of participants having completed all three tasks (applies filtering)
-uids_n86 <- data_gcss_uid %>%
-  select(uid, task, localizer) %>%
-  unique() %>%
-  mutate(compl=1) %>% 
-  pivot_wider(names_from = task, values_from = compl) %>%
-  filter(Lang==1 & MD==1 & Alice == 1) %>%
-  pull(uid)
-
-# set df to be used in n=86 parcel model
-data_gcss_n86 <- data_gcss_uid %>%
-  filter(uid %in% uids_n86)
-
-# data, validation n check
-data_gcss_n86 %>%
-  select(uid, task, localizer) %>%
-  unique() %>%
-  group_by(uid) %>%
-  count() %>% 
-  group_by(n) %>%
-  count()
-
-# run parcel model (gss, n=86)
-run_parcel_models(data_gcss_n86,
-                  parcels_filter="GcSS",
-                  target_data="gss_n86",
-                  diagnostics=TRUE)
+                  diagnostics=FALSE)
 ```
 
 ### Parcel model: atlas parcels
@@ -150,9 +186,9 @@ run_parcel_models(data_atlas,
                   diagnostics=FALSE)
 ```
 
-## Parcel tables
+## Parcel tables: statistical model outputs
 
-### Data
+### Aggregate data for computing tables
 
 ```{r}
 # read in the data
@@ -161,11 +197,6 @@ run_parcel_models(data_atlas,
 gss772_maineffects <- read.table(here("results", "stats", "gss_n772_model_stats", "gss_n772_roi_models_pairwise_maineffects.txt"), sep = "\t", header = TRUE) %>% as_tibble()
 gss772_conditions <- read.table(here("results", "stats", "gss_n772_model_stats", "gss_n772_roi_models_pairwise_conditions.txt"), sep = "\t", header = TRUE) %>% as_tibble()
 gss772_tasks <- read.table(here("results", "stats", "gss_n772_model_stats", "gss_n772_roi_models_pairwise_tasks.txt"), sep = "\t", header = TRUE) %>% as_tibble()
-
-# gss n86
-gss86_maineffects <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_maineffects.txt"), sep = "\t", header = TRUE) %>% as_tibble()
-gss86_conditions <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_conditions.txt"), sep = "\t", header = TRUE) %>% as_tibble()
-gss86_tasks <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_tasks.txt"), sep = "\t", header = TRUE) %>% as_tibble()
 
 # atlas
 atlas_roi_models_pairwise_maineffects <- read.table(here("results", "stats", "atlas_model_stats", "atlas_roi_models_pairwise_maineffects.txt"), sep = "\t", header = T) %>% as_tibble()
@@ -225,56 +256,6 @@ gss772_selective_rois <- gss772_selective_rois %>%
 # Write tables
 write.table(gss772_responsive_rois, here("results", "tables", "gss772_lang_responsive_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
 write.table(gss772_selective_rois, here("results", "tables", "gss772_lang_selective_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
-```
-
-### Language-selective and language-responsive ROIs (GSS n=86)
-
-```{r}
-# Repeat for n=86
-gss86_maineffects_rois <- gss86_maineffects %>%
-  separate(contrast, into=c("task", "effect")) %>%
-  filter(effect=="critical", task!="MD", estimate>0, p_value<0.05) %>%
-  group_by(roi) %>%
-  count() %>%
-  filter(n==2) %>%
-  mutate(maineffect=1) %>%
-  select(-n)
-
-gss86_responsive_rois <- gss86_conditions %>%
-  separate(contrast, into=c("task")) %>%
-  filter(task!="MD", p_value<0.05) %>%
-  group_by(roi) %>%
-  count() %>%
-  filter(n==2) %>%
-  select(-n) %>%
-  left_join(gss86_maineffects_rois, by="roi") %>%
-  filter(!is.na(maineffect)) %>%
-  select(-maineffect) %>%
-  unique()
-
-gss86_selective_rois <- gss86_tasks %>%
-  separate(contrast, into=c("task1", "task2"), sep = " vs. ") %>%
-  filter(task2 == "criticalMD", estimate>0, p_value<0.05) %>%
-  group_by(roi) %>%
-  count() %>%
-  filter(n==2) %>%
-  select(-n) %>%
-  mutate(selective=1)
-
-gss86_selective_rois <- gss86_responsive_rois %>%
-  left_join(gss86_selective_rois, by="roi") %>%
-  filter(!is.na(selective)) %>%
-  select(-selective)
-
-gss86_responsive_rois <- gss86_responsive_rois %>%
-  left_join(gss_parcels_recoded %>% select(ROI=ROI_new, ROIName, hemi), by=c("roi"="ROI")) %>%
-  unique()
-gss86_selective_rois <- gss86_selective_rois %>%
-  left_join(gss_parcels_recoded %>% select(ROI=ROI_new, ROIName, hemi), by=c("roi"="ROI")) %>%
-  unique()
-
-write.table(gss86_responsive_rois, here("results", "tables", "gss86_lang_responsive_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
-write.table(gss86_selective_rois, here("results", "tables", "gss86_lang_selective_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
 ```
 
 ### Language-selective and language-responsive ROIs (Atlases)
@@ -397,16 +378,6 @@ gss772_selective_rois %>%
   group_by(atlas, hemi) %>% 
   count()
 
-gss86_responsive_rois %>% 
-  mutate(atlas = "GSS_n86") %>% 
-  group_by(atlas, hemi) %>% 
-  count()
-
-gss86_selective_rois %>% 
-mutate(atlas = "GSS_n86") %>% 
-  group_by(atlas, hemi) %>% 
-  count()
-
 lang_responsive_rois %>%
   group_by(atlas, hemi) %>%
   count()
@@ -414,33 +385,4 @@ lang_responsive_rois %>%
 lang_selective_rois %>%
   group_by(atlas, hemi) %>%
   count()
-```
-
-### GSS parcels size
-
-```{r}
-gss_size <- read_excel(here("data", "TableResults.xlsx"), sheet="GcSS_ROI_Size_0.001")
-
-selective=c(1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 16, 18, 20, 21, 22, 23, 24, 25, 28)
-core=c(1, 2, 3, 6, 11)
-
-## Size selective
-gss_size %>% filter(ROI%in%selective) %>% group_by(Subject) %>% 
-  summarize(LangSelectiveSize = sum(LocalizerSize)) %>% ungroup() %>% 
-  summarize(meanSize=mean(LangSelectiveSize), sd=sd(LangSelectiveSize)) %>% 
-  mutate(size_cm3=(meanSize*8)/1000, sd_cm3=(sd*8)/1000)
-
-gss_size %>% filter(ROI%in%selective) %>% group_by(Subject) %>% 
-  summarize(LangSelectiveSize = sum(LocalizerSize)) %>% ungroup() %>% 
-  ggplot(aes(x = LangSelectiveSize)) + geom_histogram()
-
-## Size core
-gss_size %>% filter(ROI%in%core) %>% group_by(Subject) %>% 
-  summarize(LangCoreSize = sum(LocalizerSize)) %>% ungroup() %>% 
-  summarize(meanSize=mean(LangCoreSize), sd=sd(LangCoreSize)) %>% 
-  mutate(size_cm3=(meanSize*8)/1000, sd_cm3=(sd*8)/1000)
-
-gss_size %>% filter(ROI%in%core) %>% group_by(Subject) %>% 
-  summarize(LangCoreSize = sum(LocalizerSize)) %>% ungroup() %>% 
-  ggplot(aes(x = LangCoreSize)) + geom_histogram()
 ```

@@ -1,0 +1,186 @@
+---
+title: "Extended Language Network | 12_supplemental_correlation_between_preprocessings"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2025-10-23"
+format: html
+---
+
+## Overview
+
+**Purpose**: To compute and visualize correlations between preprocessing pipelines and runs (DefaultMNI_PlusStructural, DefaultNative_Functional, FreeSurfer).
+
+**Input(s)**: 
+- whole_brain_lang_estimates.txt (raw mean response estimates across pipelines and runs).
+
+**Process**: Tidying and reshaping data, computing correlations between preprocessing pipelines and between runs, and plotting scatterplots comparing their estimates.
+
+**Output(s)**: 
+- Correlation tables printed in console, and scatterplot PDFs saved in viz/images/preproc_comparison/.
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+## Data
+
+```{r}
+# read in the data
+data_preproc_comp_raw <- read.delim(here("data", "whole_brain_lang_estimates.txt"), header = FALSE) %>% as_tibble()
+colnames(data_preproc_comp_raw) = c("subject", "preprocessing", "run_localizer", "estimate")
+```
+
+## Tidying
+
+```{r}
+# excluded subjects (until we figure out what's up with them):
+excl_subjects = c("1139_FED_20231207b_3T2_PL2017", "904_FED_20220708a_3T1_PL2017", "829_FED_20200211a_3T2_PL2017", "801_FED_20191113a_3T2_PL2017")
+incl_uids = c("863", "896", "902", "914", "928", "941", "1129", "1130", "1139", "1141")
+
+data_preproc_comp = data_preproc_comp_raw %>% pivot_wider(names_from = preprocessing, values_from = estimate) %>% 
+  separate(subject, into = "uid", remove = FALSE) %>% 
+  filter(uid%in%incl_uids)
+
+data_preproc_comp %>% select(uid) %>% unique()
+data_preproc_comp_raw %>% separate(subject, into = "uid", remove = FALSE) %>% filter(uid=="1175")
+
+# Correlations between pipelines
+p1_dat <- na.omit(data_preproc_comp[, c("DefaultMNI_PlusStructural","DefaultNative_Functional")])
+cor.test(p1_dat$DefaultMNI_PlusStructural, p1_dat$DefaultNative_Functional, method = "pearson")
+
+p2_dat <- na.omit(data_preproc_comp[, c("DefaultMNI_PlusStructural","FreeSurfer")])
+cor.test(p2_dat$DefaultMNI_PlusStructural, p2_dat$FreeSurfer, method = "pearson")
+
+p3_dat <- na.omit(data_preproc_comp[, c("DefaultNative_Functional","FreeSurfer")])
+cor.test(p3_dat$DefaultNative_Functional, p3_dat$FreeSurfer, method = "pearson")
+
+# Correlations between even and odd runs, for each pipeline
+long <- data_preproc_comp %>% pivot_longer(c(DefaultMNI_PlusStructural, DefaultNative_Functional, FreeSurfer),
+               names_to = "pipeline", values_to = "val")
+wide <- long %>% select(subject, run_localizer, pipeline, val) %>% pivot_wider(names_from = run_localizer, values_from = val) 
+
+# Correlations per pipeline (Pearson). Swap to method="spearman" if preferred.
+cors <- wide %>% group_by(pipeline) %>%
+  summarize(n = sum(complete.cases(odd, even)), r = cor(odd, even, use = "pairwise.complete.obs"),
+    p = cor.test(odd, even)$p.value, .groups = "drop") %>%
+  mutate(label = sprintf("r = %.2f, p = %.3g, n = %d", r, p, n))
+
+print(cors)
+```
+
+## Plot correlations between pairs of preprocessings
+
+```{r}
+## Native volume and surface
+data_vol_surf_native <- data_preproc_comp %>%
+  select(DefaultNative_Functional, FreeSurfer)
+
+labs <- data_vol_surf_native %>%
+  summarize(r = cor(data_vol_surf_native$DefaultNative_Functional, data_vol_surf_native$FreeSurfer, use = "pairwise.complete.obs")) %>%
+  arrange(desc(r)) %>% 
+  mutate(label = sprintf("r = %.2f", r),
+         x = 2, y = 1.6,
+         vj = seq(1.5, by = 2, length.out = n()))
+
+data_vol_surf_native %>% 
+  ggplot(aes(DefaultNative_Functional, FreeSurfer)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue4") +
+  geom_text(data = labs, aes(x, y, label = label, vjust = vj),  hjust = 1.05, show.legend = FALSE, inherit.aes = FALSE) +
+  scale_y_continuous("Native Space Surface") +
+  scale_x_continuous("Native Space Volume") +
+  #labs(title = "Mean response estimate to S > N contrast", subtitle = "in mask defined as top 10% most active S>N voxels whole-brain") +
+  theme_minimal()
+
+dir.create(file.path(here("viz", "images", "supplemental"), "preproc_comparison"), recursive = TRUE, showWarnings = FALSE)
+ggsave(file.path(here("viz", "images", "supplemental"), "preproc_comparison", "native_vol_surf.pdf"), dpi=500, width = 10, height = 7, units = "cm")
+
+# Volumetric native and standard
+data_vol_mni_native <- data_preproc_comp %>%
+  select(DefaultNative_Functional, DefaultMNI_PlusStructural)
+
+labs <- data_vol_mni_native %>%
+  summarize(r = cor(data_vol_mni_native$DefaultNative_Functional, data_vol_mni_native$DefaultMNI_PlusStructural, use = "pairwise.complete.obs")) %>%
+  arrange(desc(r)) %>% 
+  mutate(label = sprintf("r = %.2f", r),
+         x = 2, y = 2.5,
+         vj = seq(1.5, by = 2, length.out = n()))
+
+data_vol_mni_native %>% 
+  ggplot(aes(DefaultNative_Functional, DefaultMNI_PlusStructural)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue4") +
+  geom_text(data = labs, aes(x, y, label = label, vjust = vj),  hjust = 1.05, show.legend = FALSE, inherit.aes = FALSE) +
+  scale_y_continuous("Standard Space Volume") +
+  scale_x_continuous("Native Space Volume") +
+  #labs(title = "Mean response estimate to S > N contrast", subtitle = "in mask defined as top 10% most active S>N voxels\nwhole-brain") +
+  #labs(title = "in mask defined as top 10% most active \nS>N voxelswhole-brain") +
+  theme_minimal()
+
+dir.create(file.path(here("viz", "images", "supplemental"), "preproc_comparison"), recursive = TRUE, showWarnings = FALSE)
+ggsave(file.path(here("viz", "images", "supplemental"), "preproc_comparison", "native_standard_vol.pdf"), dpi=500, width = 10, height = 7, units = "cm")
+```
+
+## Old plots
+
+```{r}
+# Plot with Standard Volumetric Space as reference
+df2 <- data_preproc_comp %>%
+  select(DefaultMNI_PlusStructural, DefaultNative_Functional, FreeSurfer) %>%
+  pivot_longer(c(DefaultNative_Functional, FreeSurfer),
+               names_to = "pipeline", values_to = "y")
+
+labs <- df2 %>%
+  group_by(pipeline) %>%
+  summarize(r = cor(DefaultMNI_PlusStructural, y, use = "pairwise.complete.obs"),
+            .groups = "drop") %>%
+  arrange(desc(r)) %>% mutate(pipeline=ifelse(pipeline=="FreeSurfer", "NativeSpaceSurface", "NativeSpaceVolume")) %>% 
+  mutate(label = sprintf("%s: r = %.2f", pipeline, r),
+         x = 2, y = 2.5,
+         vj = seq(1.5, by = 2, length.out = n()))
+
+df2 %>% mutate(pipeline=ifelse(pipeline=="FreeSurfer", "NativeSpaceSurface", "NativeSpaceVolume")) %>% 
+  ggplot(aes(DefaultMNI_PlusStructural, y, color = pipeline)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_text(data = labs, aes(x, y, label = label, color = pipeline, vjust = vj),  hjust = 1.05, show.legend = FALSE, inherit.aes = FALSE) +
+  scale_y_continuous("Reference preprocessing") +
+  scale_x_continuous("StandardSpaceVolume") +
+  labs(title = "Mean response estimate to S > N contrast", subtitle = "in mask defined as top 10% most active S>N voxels whole-brain") +
+  scale_color_manual(values = c("red4", "steelblue4"), labels = c("NativeSpaceVolume", "NativeSpaceSurface")) +
+  theme_minimal()
+
+dir.create(file.path(here("viz", "images", "supplemental"), "preproc_comparison"), recursive = TRUE, showWarnings = FALSE)
+ggsave(file.path(here("viz", "images", "supplemental"), "preproc_comparison", "correlations_combined.pdf"), dpi=500, width = 14, height = 12, units = "cm")
+
+# Plot with Native Surface Space as reference
+df3 <- data_preproc_comp %>%
+  select(DefaultMNI_PlusStructural, DefaultNative_Functional, FreeSurfer) %>%
+  pivot_longer(c(DefaultMNI_PlusStructural, DefaultNative_Functional),
+               names_to = "pipeline", values_to = "y")
+
+labs <- df3 %>%
+  group_by(pipeline) %>%
+  summarize(r = cor(FreeSurfer, y, use = "pairwise.complete.obs"),
+            .groups = "drop") %>%
+  arrange(desc(r)) %>% mutate(pipeline=ifelse(pipeline=="FreeSurfer", "NativeSpaceSurface", ifelse(pipeline=="DefaultNative_Functional", "NativeSpaceVolume", "StandardSpaceVolume"))) %>% 
+  mutate(label = sprintf("%s: r = %.2f", pipeline, r),
+         x = Inf, y = Inf,
+         vj = seq(1.5, by = 2, length.out = n()))
+
+df3 %>% mutate(pipeline=ifelse(pipeline=="DefaultMNI_PlusStructural", "StandardSpaceVolume", "NativeSpaceVolume")) %>% 
+  ggplot(aes(FreeSurfer, y, color = pipeline)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_text(data = labs, aes(x, y, label = label, color = pipeline, vjust = vj),  hjust = 1.05, show.legend = FALSE, inherit.aes = FALSE) +
+  scale_y_continuous("Reference preprocessing") +
+  scale_x_continuous("NativeSpaceSurface") +
+  ggtitle("Mean response estimate to S - N contrast \ntop 10% whole-brain") +
+  scale_color_manual(values = c("red4", "green4"), labels = c("NativeSpaceVolume", "StandardSpaceVolume")) +
+  theme_minimal()
+
+dir.create(file.path(here("viz", "images", "supplemental"), "preproc_comparison"), recursive = TRUE, showWarnings = FALSE)
+ggsave(file.path(here("viz", "images", "supplemental"), "preproc_comparison", "native_surface_reference.pdf"), dpi=500, width = 14, height = 12, units = "cm")
+```

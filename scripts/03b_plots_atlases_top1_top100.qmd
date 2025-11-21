@@ -1,0 +1,333 @@
+---
+title: "Extended Language Network | 03a_plots_atlases_top10_top100"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2025-10-23"
+format: html
+---
+
+## Overview
+
+**Purpose**: To visualize atlas-based parcel selectivity and responsiveness across thresholds (top10%, top100%) using ggseg atlases.
+
+**Input(s)**: 
+- detail_atlases_top10_top100.txt
+- atlas_lang_responsive_rois_names_top100.txt
+- atlas_lang_selective_rois_names_top100.txt
+- atlas_lang_responsive_rois_names.txt
+- atlas_lang_selective_rois_names.txt
+- AtlasParcels.xlsx
+
+**Process**: Data preparation, joining atlas labels, calculating mean and selectivity metrics, and plotting cortical surface maps per atlas (DKT, HOCortical, Glasser).
+
+**Output(s)**: 
+- PDF visualizations of binary and continuous effect maps saved in viz/images/{atlas} folders
+- Selectivity histograms
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(ggseg)
+library(ggsegGlasser)
+library(ggsegDKT)
+library(ggsegHO)
+
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
+source(here("scripts", "plot_brains.R")) # functions for plotting atlas figures
+```
+
+## Data
+
+```{r}
+# read in raw data
+data <- read.delim(here("data", "detail_atlases_top10_top100.txt"), sep = "\t") %>% as_tibble() 
+
+# Load in selectivity and responsiveness stats - top100%
+lang_responsive_top100 <- read.delim(here("results", "tables", "atlas_lang_responsive_rois_names_top100.txt"), sep = "\t") %>% as_tibble() %>% mutate(Responsive = 1)
+lang_selective_top100 <- read.delim(here("results", "tables", "atlas_lang_selective_rois_names_top100.txt"), sep = "\t") %>% as_tibble() %>% mutate(Selective = 1)
+
+resp_selective_top100 <- lang_responsive_top100 %>% left_join(lang_selective_top100) %>% mutate(Selective = ifelse(is.na(Selective), 0, Selective)) %>% 
+  mutate(resp_sel = ifelse(Selective == 1, "1", "0")) %>% rename(ROI = roi, parcels = atlas) %>% select(ROI, parcels, resp_sel) %>% mutate(thr = "top100%")
+
+# Load in selectivity and responsiveness stats - top10%
+lang_responsive_top10 <- read.delim(here("results", "tables", "atlas_lang_responsive_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(Responsive = 1)
+lang_selective_top10 <- read.delim(here("results", "tables", "atlas_lang_selective_rois_names.txt"), sep = "\t") %>% as_tibble() %>% mutate(Selective = 1)
+resp_selective_top10 <- lang_responsive_top10 %>% left_join(lang_selective_top10) %>% mutate(Selective = ifelse(is.na(Selective), 0, Selective)) %>% 
+  mutate(resp_sel = ifelse(Selective == 1, "1", "0")) %>% rename(ROI = roi, parcels = atlas) %>% select(ROI, parcels, resp_sel) %>% mutate(thr = "top10")
+
+resp_selective <- rbind(resp_selective_top100, resp_selective_top10)
+
+```
+
+## Tidying
+
+```{r}
+# create a data frame to define task effects
+effects <- data.frame(
+  column1 = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  column2 = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  column3 = c("degraded speech", "nonwords", "easy vWM", "intact speech", "sentences", "hard vWM"))
+# rename columns
+colnames(effects) <- c("task", "condition", "effect")
+
+n <-  data %>% select(Subject, parcels, task, localizer, thr) %>% unique() %>% count(parcels, task, localizer, thr)
+means_plots = data %>% left_join(effects) %>% left_join(n) %>% group_by(ROI, parcels, task, condition, thr) %>% 
+  summarize(MeanEffectSize = mean(EffectSize), se = sd(EffectSize)/sqrt(n)) %>% unique() %>% left_join(resp_selective)
+
+means_plots_contrasts <- data %>% left_join(effects) %>% left_join(n) %>% ungroup() %>% 
+  select(ROI, Subject, Session.Partition, EffectSize, task, localizer, parcels, thr, dataset, condition, n) %>% 
+  pivot_wider(names_from = condition, values_from = EffectSize) %>% mutate(ContrastEffectSize = critical-baseline) %>% 
+  group_by(ROI, parcels, task, thr) %>% 
+  summarize(MeanEffectSize = mean(ContrastEffectSize), se = sd(ContrastEffectSize)/sqrt(n)) %>% unique() %>% left_join(resp_selective)
+
+md_subjects <- data %>% filter(task == "MD") %>% select(Subject) %>% unique() %>% pull()
+means_plots_selectivity_index=data %>% left_join(effects) %>% ungroup() %>% filter(Subject%in%md_subjects, Effect%in%c("S", "H")) %>% 
+  group_by(ROI, Subject, thr, parcels, Effect) %>% summarize(EffectSize=mean(EffectSize)) %>% 
+  pivot_wider(names_from = Effect, values_from = EffectSize) %>% 
+  mutate(selectivity_index = S-H) %>% group_by(ROI, parcels, thr) %>% 
+  summarize(MeanSelectivity = mean(selectivity_index, na.rm=T), se = sd(selectivity_index)/sqrt(489)) %>% unique() %>% left_join(resp_selective)
+```
+
+## Plotting atlas data on brain surface
+
+### DKT
+
+```{r}
+#### Plotting DKT ####
+# DKT labels
+dktlabels=read_excel(here("data", "AtlasParcels.xlsx"), sheet="DKT") 
+dktparc=dkt %>% as.data.frame() %>% select(hemi, region, side) %>% unique()
+
+## Preparing data
+means_plots=means_plots_contrasts
+dat_plot_lang=means_plots %>% filter(parcels=="DKT") %>% left_join(dktlabels) %>% rename(region=ROIName) 
+dat_plot_lang=dktparc %>% left_join(dat_plot_lang) %>% as_tibble() %>% mutate(MeanEffectSelect = ifelse(resp_sel==1, MeanEffectSize, NA))
+
+## Preparing data - selectivity index
+dat_plot_lang_selectivity=means_plots_selectivity_index %>% filter(parcels=="DKT") %>% left_join(dktlabels) %>% rename(region=ROIName) 
+dat_plot_lang_selectivity=dktparc %>% left_join(dat_plot_lang_selectivity) %>% as_tibble() %>% mutate(MeanEffectSelect = ifelse(resp_sel==1, MeanSelectivity, NA))
+
+## Count language-selective parcels
+dat_plot_lang %>% filter(resp_sel==1) %>% select(hemi, region) %>% unique() %>% count(hemi)
+dat_plot_lang %>% filter(resp_sel==0) %>% select(hemi, region) %>% unique() %>% count(hemi)
+# Percent all parcels
+dat_plot_lang %>% filter(resp_sel==1) %>% select(hemi, region) %>% unique() %>% count() %>% mutate(percent=n/61*100)
+
+# Language-selective parcels (binary plots)
+# Top 100%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top100%"), dkt, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the DKT parcels (top100%)",
+               "DKT_selective_binary_top100")
+# Top 10%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top10"), dkt, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the DKT parcels (top10%)",
+               "DKT_selective_binary_top10")
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top100%"), dkt, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the DKT parcels (top 100%)",
+                           "Langloc_DKT_selectivity_index_top100")
+
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 10%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top10"), dkt, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the DKT parcels (top 10%)",
+                           "Langloc_DKT_selectivity_index_top10")
+
+# Language-selective parcels' response profiles
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="Lang") %>% filter(thr=="top100%"), dkt, 
+                           "Effect Size: \nS - N", 
+                           "Response to the language contrast \nin the DKT parcels (top 100%)",
+                           "Langloc_DKT_selective_top100")
+
+# Standard Langloc (reading) - top 10%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="Lang") %>% filter(thr=="top10"), dkt, 
+                           "Effect Size: \nS - N", 
+                           "Response to the language contrast \nin the DKT parcels (top 10%)",
+                           "Langloc_DKT_selective_top10")
+
+# MDloc - language-selective - top 100%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="MD") %>% filter(thr=="top100%"), dkt, 
+                           "Effect Size: \nH - E", 
+                           "Response to the spatial working memory contrast \nin the DKT parcels (top 100%)",
+                           "MD_DKT_selective_top100")
+
+# MDloc - language-selective - top 10%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="MD") %>% filter(thr=="top10"), dkt, 
+                           "Effect Size: \nH - E", 
+                           "Response to the spatial working memory contrast \nin the DKT parcels (top 10%)",
+                           "MD_DKT_selective_top10")
+```
+
+### HoCort
+
+```{r}
+#### Plotting Harvard-Oxford Cortical ####
+# HOC labels
+hoclabels=read_excel(here("data", "AtlasParcels.xlsx"), sheet="HOCortical") %>% rename(region=ROIName)
+hocparc=hoCort %>% as.data.frame() %>% select(hemi, region, side) %>% unique()
+
+# Fix the Heschl gyrus labels
+hoclabels$region[45]=hocparc$region[6]
+hoclabels$region[93]=hocparc$region[6]
+
+## Preparing data
+dat_plot_lang=means_plots %>% filter(parcels=="HOCortical") %>% left_join(hoclabels)
+dat_plot_lang=hocparc %>% left_join(dat_plot_lang) %>% as_tibble()
+
+## Preparing data - selectivity index
+dat_plot_lang_selectivity=means_plots_selectivity_index %>% filter(parcels=="HOCortical") %>% left_join(hoclabels)
+dat_plot_lang_selectivity=hocparc %>% left_join(dat_plot_lang_selectivity) %>% as_tibble() %>% mutate(MeanEffectSelect = ifelse(resp_sel==1, MeanSelectivity, NA))
+
+## Count language-selective parcels
+dat_plot_lang %>% filter(resp_sel==1) %>% select(hemi, region, thr) %>% unique() %>% count(hemi, thr)
+dat_plot_lang %>% filter(resp_sel==0) %>% select(hemi, region, thr) %>% unique() %>% count(hemi, thr)
+
+# Language-selective parcels (binary plot) - top 100%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top100%"), hoCort, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the Harvard-Oxford Cortical parcels (top 100%)",
+               "HOC_selective_binary_top100")
+
+# Language-selective parcels (binary plot) - top 10%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top10"), hoCort, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the Harvard-Oxford Cortical parcels (top 10%)",
+               "HOC_selective_binary_top10")
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top100%"), hoCort, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the Harvard-Oxford Cortical parcels (top 100%)",
+                           "Langloc_HOC_selectivity_index_top100")
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 10%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top10"), hoCort, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the Harvard-Oxford Cortical parcels (top 10%)",
+                           "Langloc_HOC_selectivity_index_top10")
+```
+
+### Glasser
+
+```{r}
+#### Plotting Glasser ####
+# get Glasser labels
+glasserlabels=read_excel(here("data", "AtlasParcels.xlsx"), sheet="Glasser")
+glasserparc=glasser %>% as.data.frame() %>% select(hemi, region, side) %>% unique()
+
+## Preparing data
+means_plots=means_plots_contrasts
+dat_plot_lang=means_plots %>% filter(parcels=="Glasser") %>% left_join(glasserlabels) %>% rename(region=ROIName) 
+dat_plot_lang=glasserparc %>% left_join(dat_plot_lang) %>% as_tibble() %>% mutate(MeanEffectSelect = ifelse(resp_sel==1, MeanEffectSize, NA))
+
+## Preparing data - selectivity index
+dat_plot_lang_selectivity=means_plots_selectivity_index %>% filter(parcels=="Glasser") %>% left_join(glasserlabels) %>% rename(region=ROIName) 
+dat_plot_lang_selectivity=glasserparc %>% left_join(dat_plot_lang_selectivity) %>% as_tibble() %>% mutate(MeanEffectSelect = ifelse(resp_sel==1, MeanSelectivity, NA))
+
+## Count language-selective parcels
+dat_plot_lang %>% filter(resp_sel==1) %>% select(hemi, region, thr) %>% unique() %>% count(hemi, thr)
+dat_plot_lang %>% filter(resp_sel==0) %>% select(hemi, region, thr) %>% unique() %>% count(hemi, thr)
+
+# Language-selective parcels (binary plots)
+# Top 100%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top100%"), glasser, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the Glasser parcels (top100%)",
+               "Glasser_selective_binary")
+# Top 10%
+brainplot_sign(dat_plot_lang %>% rename(sig=resp_sel) %>% mutate(sig=as.factor(sig)) %>% filter(thr=="top10"), glasser, 
+               "Language-selective\nparcel:", 
+               "Language-selective parcels \nin the Glasser parcels (top10%)",
+               "Glasser_selective_binary")
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top100%"), glasser, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the Glasser parcels (top 100%)",
+                           "Langloc_Glasser_selectivity_index_top100")
+
+# Language-selective parcels' selectivity for S over H Effect size S-H)
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang_selectivity %>% filter(thr=="top10"), glasser, 
+                           "Effect Size: \nS - H", 
+                           "Selectivity for S over H \nin the Glasser parcels (top 10%)",
+                           "Langloc_Glasser_selectivity_index_top10")
+
+# Language-selective parcels' response profiles
+# Standard Langloc (reading) - top 100%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="Lang") %>% filter(thr=="top100%"), glasser, 
+                           "Effect Size: \nS - N", 
+                           "Response to the language contrast \nin the Glasser parcels (top 100%)",
+                           "Langloc_Glasser_selective")
+
+# Standard Langloc (reading) - top 10%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="Lang") %>% filter(thr=="top10"), glasser, 
+                           "Effect Size: \nS - N", 
+                           "Response to the language contrast \nin the Glasser parcels (top 10%)",
+                           "Langloc_Glasser_selective")
+
+# MDloc - language-selective - top 100%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="MD") %>% filter(thr=="top100%"), glasser, 
+                           "Effect Size: \nH - E", 
+                           "Response to the spatial working memory contrast \nin the Glasser parcels (top 100%)",
+                           "MD_Glasser_selective")
+
+# MDloc - language-selective - top 10%
+brainplot_effect_selective(dat_plot_lang %>% filter(task=="MD") %>% filter(thr=="top10"), glasser, 
+                           "Effect Size: \nH - E", 
+                           "Response to the spatial working memory contrast \nin the Glasser parcels (top 10%)",
+                           "MD_Glasser_selective")
+```
+
+### Selectivity index values histograms by atlas
+
+```{r}
+# DKT
+dir.create(file.path(here("viz", "images", "main", "by_atlas"), "dkt"), recursive = TRUE, showWarnings = FALSE)
+means_plots_selectivity_index %>% filter(resp_sel==1, parcels == "DKT") %>% #print(n=21)
+  ggplot(aes(x = MeanSelectivity, fill = thr)) + 
+  geom_histogram(color = "black", alpha = 0.9, bins = 7) + 
+  scale_fill_manual(values = c("tomato3", "peachpuff2"), labels = c("top 10% voxels", "all voxels")) +
+  scale_x_continuous("Language selectivity score:\nS - H effect") +
+  scale_y_continuous("Number of parcels") +
+  labs(fill = "ROI type") +
+  theme_minimal()
+ggsave(file.path(here("viz", "images", "main", "by_atlas"), "dkt", "selectivity_histogram_DKT.pdf"), dpi=500, width = 8, height = 5, units = "cm")
+
+# HOC
+dir.create(file.path(here("viz", "images", "main", "by_atlas"), "hoCort"), recursive = TRUE, showWarnings = FALSE)
+means_plots_selectivity_index %>% filter(resp_sel==1, parcels == "HOCortical") %>% #print(n=21)
+  ggplot(aes(x = MeanSelectivity, fill = thr)) + 
+  geom_histogram(color = "black", alpha = 0.9, bins = 7) + 
+  scale_fill_manual(values = c("tomato3", "peachpuff2"), labels = c("top 10% voxels", "all voxels")) +
+  scale_x_continuous("Language selectivity score:\nS - H effect") +
+  scale_y_continuous("Number of parcels") +
+  labs(fill = "ROI type") +
+  theme_minimal()
+ggsave(file.path(here("viz", "images", "main", "by_atlas"), "hoCort", "selectivity_histogram_HOC.pdf"), dpi=500, width = 8, height = 5, units = "cm")
+
+# Glasser
+dir.create(file.path(here("viz", "images", "main", "by_atlas"), "glasser"), recursive = TRUE, showWarnings = FALSE)
+means_plots_selectivity_index %>% filter(resp_sel==1, parcels == "Glasser") %>% #print(n=21)
+  ggplot(aes(x = MeanSelectivity, fill = thr)) + 
+  geom_histogram(color = "black", alpha = 0.9, bins = 10) + 
+  scale_fill_manual(values = c("tomato3", "peachpuff2"), labels = c("top 10% voxels", "all voxels")) +
+  scale_x_continuous("Language selectivity score:\nS - H effect") +
+  scale_y_continuous("Number of parcels") +
+  labs(fill = "ROI type") +
+  theme_minimal()
+ggsave(file.path(here("viz", "images", "main", "by_atlas"), "glasser", "selectivity_histogram_Glasser.pdf"), dpi=500, width = 8, height = 5, units = "cm")
+```

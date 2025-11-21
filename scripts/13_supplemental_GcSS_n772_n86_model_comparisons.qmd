@@ -1,0 +1,454 @@
+---
+title: "Extended Language Network | 13_n772_n86_model_comparisons.qmd"
+author: "Aaron Wright [`aawva@mit.edu`], Agata Wolna [`awolna@mit.edu`]"
+date: "2025-10-23"
+format: html
+---
+
+# Overview
+
+**Purpose**: run statistical models for gss and atlas parcels, and create counts of language-selective and language-responsive rois
+
+**Input(s)**: `detail_all.txt`, the main data table
+
+**Process**: run models for the gss n=772, gss n=86, and atlas parcels; describe the distribution of parcels; calculate roi sizes, and create tables of lang-selective and lang-responsive parcels
+
+**Output(s)**: restults/stats/`atlas_model_stats` \| `gss_n772_model_stats` \| `gss_n86_model_stats`: lists of model outputs and optional diagnostics; `atlas_lang_responsive_rois_names.txt` and `atlas_lang_selective_rois_names.txt`: descriptive tables for atlas parcels
+
+# Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(lmerTest)
+library(emmeans)
+
+source(here("scripts", "run_parcel_models.R"))
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
+```
+
+This pipeline is organized into two sections, stats and plotting, to be consistent with the pipeline adopted for the GSS n772 and atlas aprcel models in 02_stats.qmd and 03_plots.qmd. This script is a acollapsing of the goals of those two scripts as applied to the GSS n86 model.
+
+# Section I : Stats pipeline
+
+## Data (raw data)
+
+```{r}
+# read in the data
+# read in the data
+data_all <- read.delim(here("data", "detail_all.txt")) # ALL participants
+
+# create a data frame to define task effects
+effects <- data.frame(
+  column1 = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  column2 = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  column3 = c("degraded speech", "nonwords", "easy vWM", "intact speech", "sentences", "hard vWM"))
+# rename columns
+colnames(effects) <- c("task", "condition", "effect")
+
+# read in parcel decoding files
+parcels <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% select(-ROI) %>% rename("roi" = "ROI_new")
+```
+
+## Parcel stats
+
+Group-constrained specific-subject parcellation method (see Fedorenko et al., 2010 for a description of the approach).
+
+## Tidying and raw data descriptive statistics
+
+Following the statistical model approach outlined in 02_stats for the GSS n772 model, we compute statistics for a subset of the parcels as defined by individuals who completed all three localizer tasks.
+
+```{r}
+#| eval: false
+
+gcssroi_excluded <- c(9, 29, 30, 31, 32, 33) # exclude unnecessary parcels before recoding
+
+# recode parcels with new ROI numbers
+data_gcss <- data_all %>% 
+  mutate(condition = as.factor(condition), task = as.factor(task)) %>%
+  filter(parcels =="GcSS", !(ROI %in% gcssroi_excluded)) # filter for only desired ROIs
+
+gss_parcels_recoded <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% # recode parcels with new ROI numbers
+  filter(!(ROI %in% gcssroi_excluded)) %>%
+  mutate(
+    atlas = "GSS",
+    lobe = NA_character_) %>%
+  rename(
+    hemi = hemisphere,
+    ROIName = label)
+
+data_gcss_recoded <- data_gcss %>% left_join(gss_parcels_recoded, by = "ROI") %>%
+  select(-ROI) %>% # drop old parcel numbers
+  rename(ROI = ROI_new) # rename new, recoded parcel numbers
+
+# subset for data of participants having completed all three tasks (does not yet compute new df)
+data_gcss_uid <- data_gcss_recoded %>% filter(localizer!="Alice") %>% 
+  separate(Subject, into = "uid", sep = "_", remove = FALSE)
+
+# data, secondary n check 
+data_gcss_uid %>%
+  select(uid, task, localizer) %>%
+  unique() %>%
+  group_by(uid) %>%
+  count() %>% 
+  group_by(n) %>%
+  count()
+
+# subset list of participants having completed all three tasks (applies filtering)
+uids_n86 <- data_gcss_uid %>%
+  select(uid, task, localizer) %>%
+  unique() %>%
+  mutate(compl=1) %>% 
+  pivot_wider(names_from = task, values_from = compl) %>%
+  filter(Lang==1 & MD==1 & Alice == 1) %>%
+  pull(uid)
+
+# set df to be used in n=86 parcel model
+data_gcss_n86 <- data_gcss_uid %>%
+  filter(uid %in% uids_n86)
+
+# data, validation n check
+data_gcss_n86 %>%
+  select(uid, task, localizer) %>%
+  unique() %>%
+  group_by(uid) %>%
+  count() %>% 
+  group_by(n) %>%
+  count()
+
+write_csv(data_gcss_n86, here("results", "tables", "gss_raw_data_detail_n86_recoded.csv")) # ALL participants' raw data, with parcels attached
+
+# join with effects + parcels
+data_n86_recoded_full <- data_gcss_n86 %>%
+  left_join(effects, by = c("task", "condition"))
+  # rename(roi = ROI, hemisphere = hemi, label = ROIName)
+
+data_n86_recoded_gss_full <- data_n86_recoded_full %>%
+  rename(
+    roi = ROI,
+    hemisphere = hemi,
+    label = ROIName
+    ) %>%
+  group_by(task, condition, roi, hemisphere, label, effect) %>%
+  summarise(
+    emmean = mean(EffectSize, na.rm = TRUE),
+    se     = sd(EffectSize, na.rm = TRUE) / sqrt(n()),
+    lowCI  = emmean - qt(0.975, df = n() - 1) * se,
+    highCI = emmean + qt(0.975, df = n() - 1) * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    atlas = "GSS",
+    model = "n=86",
+    # enforce factor order to control sorting
+    task = factor(task, levels = c("Alice", "Lang", "MD")),
+    condition = factor(condition, levels = c("baseline", "critical"))
+  ) %>%
+  # order the rows within each roi in your desired sequence
+  arrange(roi, hemisphere, label, condition, task) %>%
+  relocate(task, condition, emmean, se, lowCI, highCI, roi, atlas, effect, hemisphere, label, model)
+
+write_csv(data_n86_recoded_gss_full, here("results", "tables", "gss_raw_data_detail_n86_recoded_descriptive_stats.csv")) # ALL participants' raw data, with parcels attached
+
+```
+
+## Parcel model: gss parcels n=86 (subset)
+
+```{r}
+# run parcel model (gss, n=86)
+run_parcel_models(data_gcss_n86,
+                  parcels_filter="GcSS",
+                  target_data="gss_n86",
+                  diagnostics=FALSE)
+```
+
+## Parcel tables: statistical model output
+
+### Aggregate data for computing tables (statistical model data)
+
+```{r}
+# read in the data
+
+# gss n86
+gss86_maineffects <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_maineffects.txt"), sep = "\t", header = TRUE) %>% as_tibble()
+gss86_conditions <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_conditions.txt"), sep = "\t", header = TRUE) %>% as_tibble()
+gss86_tasks <- read.table(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_pairwise_tasks.txt"), sep = "\t", header = TRUE) %>% as_tibble()
+```
+
+### Language-selective and language-responsive ROIs (GSS n=86)
+
+```{r}
+gcssroi_excluded <- c(9, 29, 30, 31, 32, 33) # exclude unnecessary parcels before recoding
+
+gss_parcels_recoded <- read.delim(here("data", "recode_parcels.txt"), sep = "\t") %>% # recode parcels with new ROI numbers
+  filter(!(ROI %in% gcssroi_excluded)) %>%
+  mutate(
+    atlas = "GSS",
+    lobe = NA_character_) %>%
+  rename(
+    hemi = hemisphere,
+    ROIName = label)
+
+# Repeat for n=86
+gss86_maineffects_rois <- gss86_maineffects %>%
+  separate(contrast, into=c("task", "effect")) %>%
+  filter(effect=="critical", task!="MD", estimate>0, p_value<0.05) %>%
+  group_by(roi) %>%
+  count() %>%
+  filter(n==2) %>%
+  mutate(maineffect=1) %>%
+  select(-n)
+
+gss86_responsive_rois <- gss86_conditions %>%
+  separate(contrast, into=c("task")) %>%
+  filter(task!="MD", p_value<0.05) %>%
+  group_by(roi) %>%
+  count() %>%
+  filter(n==2) %>%
+  select(-n) %>%
+  left_join(gss86_maineffects_rois, by="roi") %>%
+  filter(!is.na(maineffect)) %>%
+  select(-maineffect) %>%
+  unique()
+
+gss86_selective_rois <- gss86_tasks %>%
+  separate(contrast, into=c("task1", "task2"), sep = " vs. ") %>%
+  filter(task2 == "criticalMD", estimate>0, p_value<0.05) %>%
+  group_by(roi) %>%
+  count() %>%
+  filter(n==2) %>%
+  select(-n) %>%
+  mutate(selective=1)
+
+gss86_selective_rois <- gss86_responsive_rois %>%
+  left_join(gss86_selective_rois, by="roi") %>%
+  filter(!is.na(selective)) %>%
+  select(-selective)
+
+gss86_responsive_rois <- gss86_responsive_rois %>%
+  left_join(gss_parcels_recoded %>% select(ROI=ROI_new, ROIName, hemi), by=c("roi"="ROI")) %>%
+  unique()
+gss86_selective_rois <- gss86_selective_rois %>%
+  left_join(gss_parcels_recoded %>% select(ROI=ROI_new, ROIName, hemi), by=c("roi"="ROI")) %>%
+  unique()
+
+write.table(gss86_responsive_rois, here("results", "tables", "gss86_lang_responsive_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(gss86_selective_rois, here("results", "tables", "gss86_lang_selective_rois_names.txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### (Optional) Check: Language-selective and language-responsive ROIs
+
+```{r}
+gss86_responsive_rois %>% 
+  mutate(atlas = "GSS_n86") %>% 
+  group_by(atlas, hemi) %>% 
+  count()
+
+gss86_selective_rois %>% 
+mutate(atlas = "GSS_n86") %>% 
+  group_by(atlas, hemi) %>% 
+  count()
+```
+
+# Section II : Plotting pipeline
+
+## Data (raw data)
+
+```{r}
+data_gcss_n86 <- read_csv(here("results", "tables", "gss_raw_data_detail_n86_recoded_descriptive_stats.csv")) # ALL participants' raw data, with parcels attached (n=86)
+```
+
+## Plotting: raw data by-ROI bar plots (n=86)
+
+### GSS cortical by-roi bar plots (raw data) (n=86)
+
+```{r}
+# read in the data
+
+# define config for raw pipeline
+raw_plot_config <- list(
+  df = data_gcss_n86,
+  folder = "gss_n86_raw_data_rois",
+  combined_file = "GSS_n86_raw_language_alice_md_left_cortical_combined.jpg"
+)
+
+df <- raw_plot_config$df
+
+# roi labels for titles
+labels <- df %>%
+  select(roi, hemisphere, label) %>%
+  filter(!is.na(roi)) %>%
+  arrange(roi) %>%
+  distinct()
+
+# cast factors for plotting consistency
+df$effect <- factor(df$effect, c("sentences", "nonwords", "intact speech",
+                                 "degraded speech", "hard vWM", "easy vWM"))
+df$task <- factor(df$task, c("Lang", "Alice", "MD"))
+df$label <- factor(df$label, labels$label %>% unique())
+
+# combined bar plot (left hemisphere only, like your model plots)
+df %>%
+  mutate(hemilabel = str_c(hemisphere, " ", label)) %>%
+  filter(hemisphere == "left", label != "cerebellum") %>%
+  ggplot(aes(x = label, y = emmean, ymin = emmean - se, ymax = emmean + se, fill = effect)) +
+  geom_col(position = position_dodge(0.9), color = "black") +
+  geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+  scale_fill_manual(values = cols_fill) +
+  scale_y_continuous("Effect size") +
+  scale_x_discrete_wrap("parcel") +
+  coord_cartesian(ylim = c(-2, 5)) +
+  my_theme_text_smaller +
+  theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+
+## save combined plot
+ggsave(
+  str_c(here("viz", "images", "supplemental", "combined_plots", raw_plot_config$combined_file)),
+  dpi = 500, width = 30, height = 16, units = "cm"
+)
+
+# make by-ROI plots (each ROI separately)
+for (nroi in unique(df$roi)) {
+
+  df %>%
+    filter(roi == nroi) %>%
+    ggplot(aes(x = task, y = emmean, ymin = lowCI, ymax = highCI, fill = effect)) +
+    geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
+    geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+    scale_fill_manual(values = cols_fill) +
+    scale_y_continuous("Effect size") +
+    scale_x_discrete_wrap("task") +
+    guides(fill = FALSE, size = FALSE) +
+    ggtitle(str_c(labels$hemisphere[labels$roi == nroi], "\n", labels$label[labels$roi == nroi])) +
+    coord_cartesian(ylim = c(-2, 4)) +
+    my_theme_text_smaller +
+    theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+
+  ## save each ROI plot
+  ggsave(
+    here("viz", "images", "supplemental", "by_roi", raw_plot_config$folder,
+         str_c("GSS_language_alice_md_raw_", nroi, "_roi.pdf")),
+    dpi = 500, width = 5.8, height = 6, units = "cm"
+  )
+}
+```
+
+## Statisical models
+
+```{r}
+# read in data
+
+# GSS model - full model (for model comparison plots)
+gss_means_plots_n772 <- read.delim(here("results", "stats", "gss_n772_model_stats", "gss_n772_roi_models_all_means.txt")) %>% as_tibble() %>% select(-df)
+
+# GSS model - n86 (only participants with all 3 tasks)
+gss_means_plots_n86 <- read.delim(here("results", "stats", "gss_n86_model_stats", "gss_n86_roi_models_all_means.txt")) %>% as_tibble() %>% select(-df)
+
+# join effects + gss_means_plots - n772
+gss_means_plots_n772 <- gss_means_plots_n772 %>%
+  left_join(effects, by = c("task", "condition")) %>%
+  left_join(parcels, by = "roi") %>%
+  mutate(model = "n=772")
+
+# join effects + gss_means_plots - n86
+gss_means_plots_n86 <- gss_means_plots_n86 %>%
+  left_join(effects, by = c("task", "condition")) %>%
+  left_join(parcels, by = "roi") %>%
+  mutate(model = "n=86", atlas = "GSS")
+```
+
+## Plotting: statistical model data by-ROI bar plots
+
+### GSS cortical / cerebellar bar plots (n=86)
+
+```{r}
+plot_configs <- list(
+  list(n = 86, df = gss_means_plots_n86, folder = "gss_n86_statistical_models_rois", combined_file = "GSS_n86_statistical_language_alice_md_left_cortical_combined.jpg")
+)
+
+for(cfg in plot_configs){
+
+  df <- cfg$df
+  
+  # ROI names
+  labels <- df %>%
+    select(roi, hemisphere, label) %>%
+    filter(!is.na(roi)) %>%
+    arrange(roi) %>%
+    unique()
+  
+  # cast columns as factors for plotting
+  df$effect <- factor(df$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+  df$label <- factor(df$label, labels$label %>% unique())
+  df$task <- factor(df$task, c("Lang", "Alice", "MD"))
+  
+  # combined bar plot
+  df %>% mutate(hemilabel = str_c(hemisphere, " ", label)) %>% 
+    filter(hemisphere=="left", label!="cerebellum") %>% 
+    ggplot(aes(x = label, y = emmean, ymin = emmean-se, ymax = emmean+se, fill = effect)) +
+    geom_col(position = position_dodge(0.9), color="black") +
+    geom_errorbar(position = position_dodge(0.9), linewidth = 1, width = 0) +
+    scale_fill_manual(values = cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete_wrap("parcel") +
+    coord_cartesian(ylim = c(-2, 5)) +
+    my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+  
+  ## save combined plot
+  ggsave(str_c(here("viz", "images", "supplemental", "combined_plots", cfg$combined_file)), dpi=500, width = 30, height = 16, units = "cm")
+  
+  # by-ROI plots
+  for(nroi in 1:27){
+
+    df %>% filter(roi == nroi) %>% 
+      ggplot(aes(x = task, y = emmean, ymin = lowCI, ymax = highCI, fill = effect)) +
+      geom_col(position = position_dodge(0.9), color = "black", size = 0.25) +
+      geom_errorbar(position = position_dodge(0.9), linewidth = 0.25, width = 0) +
+      scale_fill_manual(values = cols_fill) +
+      scale_y_continuous('Effect size') +
+      scale_x_discrete_wrap("task") +
+      guides(fill = FALSE, size = FALSE) +
+      ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
+      coord_cartesian(ylim =c(-2, 4)) +
+      my_theme_text_smaller + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+
+    ## save plot — here() takes folder and file as separate args
+    ggsave(
+      here("viz", "images", "supplemental", "by_roi", cfg$folder, str_c("GSS_language_alice_md_", nroi, "_roi_nolegend.pdf")),
+      dpi=500, width = 5.8, height = 6, units = "cm"
+    )
+  }
+}
+```
+
+### Full model n=772 vs. partial model n=86 model plots
+
+```{r}
+# set comparison df
+means_all_n86_comparison <- rbind(gss_means_plots_n772, gss_means_plots_n86)
+
+# set ROI labels
+labels <- means_all_n86_comparison %>% select(roi, hemisphere, label) %>% filter(!is.na(roi)) %>% arrange(roi) %>% unique()
+
+means_all_n86_comparison$effect <- factor(means_all_n86_comparison$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+means_all_n86_comparison$label <- factor(means_all_n86_comparison$label, labels$label %>% unique())
+means_all_n86_comparison$task <- factor(means_all_n86_comparison$task, c("Lang", "Alice", "MD"))
+
+# by-ROI GSS
+for(nroi in 1:27){
+  means_all_n86_comparison %>% filter(roi == nroi) %>%
+    ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
+    geom_col(position = position_dodge(0.9), color="black", size=0.25) +
+    geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
+    scale_fill_manual(values=cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete_wrap("task") +
+    guides(fill = FALSE, size = FALSE) +
+    facet_grid(~model, scales="free_x") +
+    ggtitle(str_c(labels$hemisphere[nroi], "\n", labels$label[nroi])) +
+    coord_cartesian(ylim=c(-2, 5)) +
+    my_theme_text_smaller_noborders + theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 70))
+  ggsave(str_c(here("viz", "images", "supplemental", "by_roi", "gss_n772_n86_statistical_models_comparison", "GCSS_language_alice_md_"), nroi, "_roi_nolegend.pdf"), dpi=500, width = 5.8, height = 6, units = "cm")
+}
+```

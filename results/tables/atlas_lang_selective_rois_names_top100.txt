@@ -1,0 +1,114 @@
+roi	atlas	hemi	ROIName
+3	HOCortical	left	Sup. Frontal Gyrus
+5	HOCortical	left	Inf. Frontal Gyrus pars triangularis
+6	HOCortical	left	Inf. Frontal Gyrus pars opercularis
+8	Glasser	left	4
+8	HOCortical	left	Temporal Pole
+9	Glasser	left	3b
+9	HOCortical	left	Sup. Temporal Gyrus ant.
+10	HOCortical	left	Sup. Temporal Gyrus post.
+11	HOCortical	left	Mid. Temporal Gyrus ant.
+12	Glasser	left	55b
+12	HOCortical	left	Mid. Temporal Gyrus post.
+13	HOCortical	left	Mid. Temporal Gyrus temporooccipital
+14	HOCortical	left	Inf. Temporal Gyrus ant.
+15	DKT	left	medial orbitofrontal
+16	DKT	left	middle temporal
+19	DKT	left	pars opercularis
+20	DKT	left	pars orbitalis
+20	HOCortical	left	Supramarginal Gyrus post.
+21	DKT	left	pars triangularis
+21	HOCortical	left	Angular Gyrus
+25	Glasser	left	PSL
+25	HOCortical	left	Frontal Medial Cortex
+26	Glasser	left	SFL
+28	Glasser	left	STV
+29	DKT	left	superior frontal
+31	DKT	left	superior temporal
+33	HOCortical	left	Frontal Orbital Cortex
+37	HOCortical	left	Temporal Fusiform Cortex ant.
+38	HOCortical	left	Temporal Fusiform Cortex post.
+41	HOCortical	left	Frontal Operculum Cortex
+42	HOCortical	left	Central Opercular Cortex
+43	HOCortical	left	Parietal Operculum Cortex
+44	HOCortical	left	Planum Polare
+46	HOCortical	left	Planum Temporale
+51	DKT	right	medial orbitofrontal
+52	DKT	right	middle temporal
+53	HOCortical	right	Inf. Frontal Gyrus pars triangularis
+56	HOCortical	right	Temporal Pole
+57	DKT	right	pars triangularis
+57	HOCortical	right	Sup. Temporal Gyrus ant.
+58	HOCortical	right	Sup. Temporal Gyrus post.
+59	HOCortical	right	Mid. Temporal Gyrus ant.
+60	HOCortical	right	Mid. Temporal Gyrus post.
+61	HOCortical	right	Mid. Temporal Gyrus temporooccipital
+62	HOCortical	right	Inf. Temporal Gyrus ant.
+65	Glasser	left	10r
+66	Glasser	left	47m
+67	DKT	right	superior temporal
+69	Glasser	left	9m
+73	HOCortical	right	Frontal Medial Cortex
+74	Glasser	left	44
+75	Glasser	left	45
+76	Glasser	left	47l
+79	Glasser	left	IFJa
+81	Glasser	left	IFSp
+82	Glasser	left	IFSa
+82	HOCortical	right	Parahippocampal Gyrus ant.
+85	HOCortical	right	Temporal Fusiform Cortex ant.
+88	Glasser	left	10v
+94	Glasser	left	47s
+102	Glasser	left	OP2-3
+104	Glasser	left	RI
+105	Glasser	left	PFcm
+107	Glasser	left	TA2
+113	Glasser	left	FOP1
+118	Glasser	left	EC
+120	Glasser	left	H
+122	Glasser	left	PeEc
+123	Glasser	left	STGa
+124	Glasser	left	PBelt
+125	Glasser	left	A5
+128	Glasser	left	STSda
+129	Glasser	left	STSdp
+130	Glasser	left	STSvp
+131	Glasser	left	TGd
+132	Glasser	left	TE1a
+133	Glasser	left	TE1p
+135	Glasser	left	TF
+137	Glasser	left	PHT
+139	Glasser	left	TPOJ1
+140	Glasser	left	TPOJ2
+150	Glasser	left	PGi
+165	Glasser	left	s32
+169	Glasser	left	FOP5
+172	Glasser	left	TGv
+175	Glasser	left	A4
+176	Glasser	left	STSva
+177	Glasser	left	TE1m
+178	Glasser	left	PI
+209	Glasser	right	3b
+212	Glasser	right	55b
+228	Glasser	right	STV
+269	Glasser	right	9m
+274	Glasser	right	44
+275	Glasser	right	45
+282	Glasser	right	IFSa
+288	Glasser	right	10v
+293	Glasser	right	OFC
+307	Glasser	right	TA2
+318	Glasser	right	EC
+323	Glasser	right	STGa
+325	Glasser	right	A5
+328	Glasser	right	STSda
+329	Glasser	right	STSdp
+330	Glasser	right	STSvp
+331	Glasser	right	TGd
+332	Glasser	right	TE1a
+333	Glasser	right	TE1p
+339	Glasser	right	TPOJ1
+340	Glasser	right	TPOJ2
+372	Glasser	right	TGv
+375	Glasser	right	A4
+376	Glasser	right	STSva

@@ -10,7 +10,7 @@ library(ggsegDKT)
 library(ggsegHO)
 library(patchwork)
 
-# brainplot and braincollage functions
+# brainplot, braincollage, and brainplot_* functions
 
 # The ***brainplot*** function works by modifying both the native ggseg atlas data AND a custom dataset supplied by the user.
 #
@@ -25,6 +25,8 @@ library(patchwork)
 #   https://ggseg.github.io/ggseg/articles/geom-sf.html
 # 
 # The ***braincollage*** function produces a handful of preset atlas layouts that work well with the ***brainplot*** function's structure. It is recommended that dimensional changes be made carefully. (But, of course, have fun!)
+# The various ***'brainplot_*'*** functions are miniature and functionally-limited versions of the core brainplot function.
+
 
 # brainplot: a dynamic function for plotting functional neuroimaging data using ggseg atlases.
 
@@ -569,10 +571,10 @@ brainplot <- function(
   file_name <- gsub(" ", "_", file_name)
 
   # create folder if it doesn't exist
-  dir.create(file.path(here("viz", "images"), folder), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(here("viz", "images", "main", "by_atlas"), folder), recursive = TRUE, showWarnings = FALSE)
   
   ggsave(
-  filename = file.path(here("viz", "images"), folder, paste0(file_name, ".", file_type)),
+  filename = file.path(here("viz", "images", "main", "by_atlas"), folder, paste0(file_name, ".", file_type)),
   plot = atlas_plot,
   dpi = 500,
   width = 18,
@@ -667,4 +669,80 @@ braincollage <- function(df, atlas) {
   
   print(paste0("Plots created for atlas: ", atlas_name))
   
+}
+
+# brainplot_sign
+
+#### Plotting function - atlas on the brain ####
+brainplot_sign <- function(df, atl, legend_title, plot_title, name) {
+  if (grepl("HOC", name)) {
+    x1=300
+    x2=1000
+    y1=200
+    y2=650
+  } else {
+    x1=140
+    x2=520
+    y1=100
+    y2=350
+  }
+  plot=ggplot(df) +
+    geom_brain(atlas = atl, position = position_brain(hemi ~ side), color = "grey18", size=0.2, 
+               aes(fill=sig)) +
+    scale_fill_manual(values = c("0" = "rosybrown1", "1" = "indianred3", na.value = "black"), labels = c("Language-Responsive", "Language-Selective")) +
+    theme_brain() +
+    scale_x_continuous(breaks = c(x1, x2), 
+                       labels = c("lateral", "medial")) +
+    scale_y_continuous(breaks = c(y1, y2), 
+                       labels = c("left", "right")) +
+    labs(fill=legend_title,
+         title=plot_title)
+  print(plot)
+  # Ensure atlas folder exists
+  dir.create(file.path(here("viz", "images", "main", "by_atlas"), atl$atlas), recursive = TRUE, showWarnings = FALSE)
+  ggsave(
+    filename = file.path(here("viz", "images", "main", "by_atlas"), atl$atlas, paste0(name, ".pdf")),
+    dpi = 500,
+    width = 14,
+    height = 12,
+    units = "cm"
+  )
+}
+
+# brainplot_effect_selective
+
+brainplot_effect_selective <- function(df, atl, legend_title, plot_title, name) {
+  if (grepl("HOC", name)) {
+    x1=300
+    x2=1000
+    y1=200
+    y2=650
+  } else {
+    x1=140
+    x2=520
+    y1=100
+    y2=350
+  }
+  plot=ggplot(df) +
+    geom_brain(atlas = atl, position = position_brain(hemi ~ side), color = "grey18", size=0.2, 
+               aes(fill=MeanEffectSelect)) +
+    scale_fill_gradient(low="white", high="red4", limits = c(0, 3)) +
+    theme_brain() +
+    scale_x_continuous(breaks = c(x1, x2), 
+                       labels = c("lateral", "medial")) +
+    scale_y_continuous(breaks = c(y1, y2), 
+                       labels = c("left", "right")) +
+    labs(fill=legend_title,
+         title=plot_title) +
+    expand_limits(fill = seq("0", "2.5", by=0.5))
+  print(plot)
+  # Ensure atlas folder exists
+  dir.create(file.path(here("viz", "images", "main", "by_atlas"), atl$atlas), recursive = TRUE, showWarnings = FALSE)
+  ggsave(
+    filename = file.path(here("viz", "images", "main", "by_atlas"), atl$atlas, paste0(name, ".pdf")),
+    dpi = 500,
+    width = 14,
+    height = 12,
+    units = "cm"
+  )
 }

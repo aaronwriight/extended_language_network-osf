@@ -74,12 +74,15 @@ README.html
 
 # private project folders and files <-  some too large
 /data/detail_all*.txt
+/data/detail_atlases_top10_top100*.txt
 /data/auditory_language_localizer/
 /data/reading_language_localizer/
 /data/spatial_WM_localizer/
+/data/MDfROIs/
 
 # folders produced from script (to save space)
-/viz/images/*/
+/viz/images/main/*/
+/viz/images/supplemental/*/
 /results/stats/*model_stats/
 /results/tables/*/
 /.quarto/

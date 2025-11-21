@@ -1,0 +1,151 @@
+---
+title: "Extended Language Network | 07_supplemental_LangfROIs_GcSS_excluded_for_size"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2025-09-25"
+format: html
+---
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(lme4)
+
+source(here("scripts", "run_parcel_models.R"))
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
+```
+
+## Data
+
+```{r}
+## Read in the data
+data_all <- read.delim(here("data", "detail_all.txt")) %>% as_tibble()
+data_all_p001 <- read.delim(here("data", "detail_gss_p.001.txt")) %>% as_tibble()
+
+data_all %>% select(Subject, task, localizer) %>% unique() %>% count(task, localizer)
+```
+
+## Statistics - GSS parcels excluded for size
+
+```{r}
+#### GcSS parcels ####
+emm_options(pbkrtest.limit = 10000)
+emm_options(lmerTest.limit = 10000)
+
+gcssroi_excluded=c(9, 29, 30, 31, 32) # ROI 33 has insufficient condition and task levels, so we exclude it and plot only the first 5 ROIs
+
+dat_gcss <- data_all %>% mutate(condition = as.factor(condition), task = as.factor(task)) %>% filter(parcels=="GcSS", ROI%in%gcssroi_excluded, LocalizerSize > 0)
+
+contrasts(dat_gcss$condition) = contr.treatment(2)
+contrasts(dat_gcss$task) <- contr.treatment(3, base = 1)
+
+rois=dat_gcss$ROI %>% unique()
+tasks=c("Alice", "Lang", "MD")
+
+# SANITY CHECKS
+
+# check factors
+dat_gcss %>%
+  filter(parcels == "GcSS", localizer == "Lang") %>%
+  group_by(ROI) %>%
+  summarize(
+    n_conditions = n_distinct(condition),
+    n_tasks      = n_distinct(task)
+  ) %>%
+  arrange(ROI)
+
+# check ROI effect sizes
+dat_gcss %>% 
+  filter(ROI == 9) %>% # check parcel
+  group_by(task, condition) %>% 
+  summarize(raw_mean = mean(EffectSize), .groups = "drop")
+
+#### A model testing all tasks together in each ROI ####
+roi_models_gcss_all=tibble(matrix(ncol = 7, nrow = 0))
+roi_models_gcss_all_means=tibble(matrix(ncol = 8, nrow = 0))
+for(i in rois){
+  model_gcss_roi_contrast = lmer(EffectSize ~ 1 + condition + task + condition: task +
+                                   (1 | Subject), data = dat_gcss %>% filter(parcels=="GcSS", ROI == i, localizer=="Lang"), # problematic line, breaks the task conditions
+                                  control=lmerControl(optimizer = "bobyqa"))
+  sum=summary(model_gcss_roi_contrast)$coef 
+  names=rownames(sum)
+  sum=cbind(names, sum, i) %>% as_tibble()
+  
+  emm <- emmeans(model_gcss_roi_contrast, ~ task * condition)
+  means <- emm %>% as.data.frame() %>% cbind(i)
+
+  roi_models_gcss_all = roi_models_gcss_all %>% rbind(sum)
+  roi_models_gcss_all_means <- roi_models_gcss_all_means %>% rbind(means)
+}
+colnames(roi_models_gcss_all_means) <- c('task', 'condition', 'emmean', 'se', 'df', 'lowCI', 'highCI', 'roi')
+```
+
+```{r}
+#### ---- Plot results by ROI ---- ####
+
+dir.create(here("viz", "images", "supplemental", "by_roi", "excluded_GcSS_ROIs"), recursive = TRUE, showWarnings = FALSE)
+
+#### Bar plots  ####
+effects <- data.frame(
+  column1 = c("Alice", "Lang", "MD", "Alice", "Lang", "MD"),
+  column2 = c("baseline", "baseline", "baseline", "critical", "critical", "critical"),
+  column3 = c("degraded speech", "nonwords", "easy vWM", "intact speech", "sentences", "hard vWM"))
+
+colnames(effects) <- c("task", "condition", "effect")
+
+roi_models_gcss_all_means = roi_models_gcss_all_means %>% left_join(effects) %>% 
+  mutate(task = ifelse(task == "Lang", "Reading language", ifelse(task == "Alice", "Auditory language", ifelse(task == "MD", "Spatial WM", NA))))
+
+roi_models_gcss_all_means$effect = factor(roi_models_gcss_all_means$effect, c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+roi_models_gcss_all_means$task = factor(roi_models_gcss_all_means$task, c("Reading language", "Auditory language", "Spatial WM"))
+
+rois=roi_models_gcss_all_means$roi %>% unique()
+
+for(nroi in rois){
+  roi_models_gcss_all_means %>% filter(roi==nroi) %>% 
+    ggplot(aes(x = task, y=emmean, ymin=lowCI, ymax=highCI, fill=effect)) +
+    geom_col(position = position_dodge(0.9), color="black", size=0.25) +
+    geom_errorbar(position=position_dodge(0.9), linewidth=0.25, width=0) +
+    scale_fill_manual(values=cols_fill) +
+    scale_y_continuous('Effect size') +
+    scale_x_discrete("", labels=NULL) +
+    guides(fill = FALSE, size = FALSE) +
+    ggtitle(str_c("ROI number ", nroi)) +
+    #coord_cartesian(ylim=c(-0.5, 4.2)) +
+    my_theme_text_smaller
+  ggsave(here("viz", "images", "supplemental", "by_roi", "excluded_GcSS_ROIs", str_c("Small_GcSS_Excluded_for_Size_", nroi, "_roi_nolegend.pdf")), dpi=500, width = 4.8, height = 5, units = "cm")
+}
+
+#### Size histograms for p.001 ####
+
+dir.create(here("viz", "images", "supplemental", "by_roi", "LangfROIs_p.001"), recursive = TRUE, showWarnings = FALSE)
+
+# Descriptive stats
+data_all_p001 %>% group_by(ROI) %>% summarize(mean_size=mean(LocalizerSize), min = min(LocalizerSize), max = max(LocalizerSize)) %>% filter(ROI%in%gcssroi_excluded)
+
+# % participants who had non-zero activations in each ROI, allowing to define a fROI
+ROI_subjects_excl=data_all_p001 %>% select(ROI, Subject, task, Session.Partition, LocalizerSize) %>% unique() %>% 
+  filter(LocalizerSize==0, task=="Lang") %>% group_by(ROI, Subject) %>% count() %>% mutate(excl=1)
+
+data_all_p001 %>% filter(task=="Lang") %>% select(ROI, Subject, Session.Partition, LocalizerSize) %>% unique() %>% 
+  left_join(ROI_subjects_excl) %>% mutate(excl=ifelse(is.na(excl), 0, excl)) %>% select(-n) %>% 
+  group_by(ROI) %>% summarize(n_excl=sum(excl)/2) %>% 
+  mutate(proportion_fROI=100-(n_excl/772)*100) %>% print(n=33)
+
+data_p001_plots = data_all_p001 %>% filter(task == "Lang", localizer == "Lang") %>% 
+  select(ROI, Session.Partition, localizer, Subject, LocalizerSize) %>% unique() %>% filter(ROI%in%gcssroi_excluded)
+  
+for(roi in gcssroi_excluded){
+  data_p001_plots %>% filter(ROI==roi) %>% 
+  ggplot(aes(x = LocalizerSize)) + geom_histogram() + ggtitle(roi) + my_theme_text_smaller
+  ggsave(here("viz", "images", "supplemental", "by_roi", "LangfROIs_p.001", str_c("histogram_Small_GcSS_Excluded_for_Size_", roi, "_roi_nolegend.pdf")), dpi=500, width = 4.8, height = 5, units = "cm")
+}
+
+# insets
+for(roi in gcssroi_excluded){
+  data_p001_plots %>% filter(ROI==roi, LocalizerSize >0) %>% 
+    ggplot(aes(x = LocalizerSize)) + geom_histogram() + my_theme_text_smaller + scale_x_continuous(NULL) + scale_y_continuous(NULL)
+  ggsave(here("viz", "images", "supplemental", "by_roi", "LangfROIs_p.001", str_c("histogram_nozero_Small_GcSS_Excluded_for_Size_", roi, "_roi_nolegend.pdf")), dpi=500, width = 5.5, height = 5, units = "cm")
+}
+```
