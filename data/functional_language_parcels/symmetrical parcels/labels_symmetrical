@@ -1,0 +1,27 @@
+roiNumber	hemisphere	label
+1	left	IFG orbitalis
+2	left	IFG
+3	left	MFG / PrecG 
+4	left	anterior temporal  
+5	left	temporal pole  
+6	left	posterior temporal  
+7	left	BTLA   
+8	left	superior precuneus
+9	left	medial frontal cortex
+10	left	medial anterior SFG
+11	left	medialSFG   
+12	left	cerebellum Crus II / VIIb
+13	left	cerebellum VIIb / VIIIa 
+14	right	IFG orbitalis
+15	right	IFG
+16	right	MFG / PrecG 
+17	right	anterior temporal  
+18	right	temporal pole  
+19	right	posterior temporal  
+20	right	BTLA   
+21	right	superior precuneus
+22	right	medial frontal cortex
+23	right	medial anterior SFG
+24	right	medialSFG   
+25	right	cerebellum Crus II / VIIb
+26	right	cerebellum VIIb / VIIIa 
