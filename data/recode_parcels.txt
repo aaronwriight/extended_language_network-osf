@@ -15,12 +15,12 @@ ROI	ROI_new	hemisphere	label
 15	26	right	posterior VI / Crus I
 16	21	bilateral	medial anterior SFG
 17	16	left	occipital
-18	20	bilateral	medial frontal cortex
-19	27	right	lateral VI / Crus I
+18	20	bilateral	ventromedial frontal cortex
+19	27	right	lateral VI
 20	8	right	MFG / PrecG  
 21	6	right	IFG orbital
 22	11	left	temporal pole  
-23	23	left	Crus II / VIIb
+23	23	left	Crus I / II / VIIb
 24	7	right	IFG
 25	14	left	superior precuneus
 26	15	left	precuneus / post ACC
