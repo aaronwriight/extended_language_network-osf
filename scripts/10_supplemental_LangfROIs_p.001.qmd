@@ -1,5 +1,5 @@
 ---
-title: "Extended Language Network | 08_supplemental_LangfROIs_p.001"
+title: "Extended Language Network | 10_supplemental_LangfROIs_p.001"
 author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
 date: "2025-09-25"
 format: html

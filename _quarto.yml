@@ -1,0 +1,39 @@
+project:
+  type: default
+  output-dir: .renders       # all final renders go here
+
+authors:
+  - name: "Agata Wolna"
+  - name: "Aaron Wright"
+
+format:
+  html:
+    css: ../dev/.styles/quarto_styles.css
+    toc: true
+    toc-depth: 2
+    theme: cosmo
+  pdf:
+    include-in-header: ../dev/.styles/quarto_styles.tex
+    toc: true
+    toc-depth: 2
+
+paths:
+  data: data
+  scripts: scripts
+  results:
+    statistics: results/stats
+    tables: results/tables
+  viz:
+    adobe_illustrator: viz/illustrator
+    plots_and_images: viz/images
+    posters: viz/presentation
+    publication_ready_figures: viz/figures
+  misc: misc
+
+execute:
+  eval: true        # ensure MATLAB chunks are executed
+  cache: true      # set to false for scripts using jupyter/mkernel to avoid .quarto_ipynb missing errors
+  echo: true
+  warning: false
+  message: true
+  error: false

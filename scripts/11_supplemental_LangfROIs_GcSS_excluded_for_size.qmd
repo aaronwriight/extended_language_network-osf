@@ -1,5 +1,5 @@
 ---
-title: "Extended Language Network | 07_supplemental_LangfROIs_GcSS_excluded_for_size"
+title: "Extended Language Network | 11_supplemental_LangfROIs_GcSS_excluded_for_size"
 author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
 date: "2025-09-25"
 format: html
