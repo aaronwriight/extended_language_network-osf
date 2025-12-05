@@ -200,7 +200,7 @@ OSF Storage/
 │   ├── symmetrical parcels/
 │   └── original GcSS parcels/
 ├── TableOSF1 - ExtendedLanguageNetwork_SI_LitReviewTable
-├── TableOSF2 - 
+├── TableOSF2 - StandardizedAtlas_fROIStatisticalDetails.xlsx
 ...
 ```
 
@@ -241,7 +241,7 @@ Extended Language Network (GitHub - OSF)/
 │   │   ├── gss772_lang_selective_rois_names_.txt
 │   │   ├── `Table1.xlsx`: UNIQUE functional GSS parcels (responsive and selective, n=772) and UNIQUE HOSubCort parcels.
 │   │   ├── `Table2.xlsx`: UNIQUE atlas parcels (DKT, Glasser, HoCort), and NO HOSubCort parcels
-│   │   ├── `TableO1.xlsx`: COMPREHENSIVE atlas parcels (DKT, Glasser, HoCort), and NO HOSubCort parcels
+│   │   ├── `TableO1.xlsx`: COMPREHENSIVE atlas parcels (DKT, Glasser, HoCort), and NO HOSubCort parcels (same as TableOSF2 - StandardizedAtlas_fROIStatisticalDetails)
 │   │   ├── `TableO2A.xlsx`: ALL functional GSS parcels (responsive and selective, n=772) and ALL HOSubCort parcels.
 │   │   ├── `TableO2B.xlsx`: ALL functional GSS parcels (responsive and selective, n=86) and NO HOSubCort parcels.
 │   │   └── `TableO3.xlsx`: literature review, same as osf/TableOSF1 - ExtendedLanguageNetwork_SI_LitReviewTable
