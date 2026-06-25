@@ -1,0 +1,217 @@
+---
+title: "Extended Language Network | 02b_stats_selectivityFallOff"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2026-06-24"
+format: html
+---
+
+## Overview
+
+**Purpose**: Run statistical models evaluating responsiveness and selectivity for language across Harvard-Oxford subcortical parcels using the selectivity fall-off dataset (fROI defined at top 10% threshold).
+
+**Input(s)**: `data/detailed_selectivity_falloff_all.txt` — per-subject effect sizes across fROI thresholds and conditions
+
+**Process**: Fit mixed-effects models (lmer) per subcortical ROI testing differences between conditions and tasks (Lang, Alice, MD localizers); run emmeans post-hoc contrasts to identify language-responsive and language-selective parcels.
+
+**Output(s)**: `results/stats/selectivityFallOff_model_stats/`:
+- `subcort_model_all_effects.txt` — main model fixed effects per ROI
+- `subcort_model_pairwise_condition.txt` — critical vs. baseline contrasts per task
+- `subcort_model_pairwise_task.txt` — between-task contrasts at critical conditions
+- `subcort_model_pairwise_maineffects.txt` — condition-vs-zero contrasts
+- `subcort_model_all_means.txt` — estimated marginal means per task × condition
+- `subcort_responsive_rois.txt` — ROIs classified as language-responsive
+- `subcort_selective_rois.txt` — ROIs classified as language-selective
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+library(lmerTest)
+library(emmeans)
+
+source(here("scripts", "run_parcel_models.R"))
+```
+
+## Data
+
+```{r}
+data_selectivity_falloff <- read.delim(here("data", "detailed_selectivity_falloff_all.txt")) %>%
+  as_tibble() %>%
+  filter(included == 1)
+
+data_subcort <- data_selectivity_falloff %>%
+  filter(parcels == "HOSubcortical", !is.na(condition))
+
+# n check
+data_subcort %>%
+  select(Subject, task, localizer) %>%
+  unique() %>%
+  count(task, localizer)
+```
+
+## Tidying
+
+```{r}
+# classify conditions as critical or baseline
+baseline <- c("easy vWM", "nonwords", "degraded speech")
+
+dat <- data_subcort %>%
+  mutate(
+    cond = ifelse(condition %in% baseline, "baseline", "critical"),
+    cond = as.factor(cond),
+    task = as.factor(task))
+
+# set contrast coding: treatment contrasts
+contrasts(dat$cond) <- contr.treatment(2)
+contrasts(dat$task) <- contr.treatment(3, base = 1)
+
+rois  <- dat$ROI %>% unique()
+tasks <- c("Alice", "Lang", "MD")
+```
+
+## Statistical models: subcortical parcels
+
+Models are fit per ROI on data from the Lang localizer at the top 10% fROI threshold, testing differences between conditions and tasks.
+
+```{r}
+# initialise output tables
+roi_models_subcort_all             <- tibble(matrix(ncol = 7, nrow = 0))
+roi_models_subcort_pairwise_condition  <- tibble(matrix(ncol = 8, nrow = 0))
+roi_models_subcort_pairwise_task       <- tibble(matrix(ncol = 8, nrow = 0))
+roi_models_subcort_pairwise_maineffects <- tibble(matrix(ncol = 8, nrow = 0))
+roi_models_subcort_all_means       <- tibble(matrix(ncol = 8, nrow = 0))
+
+for (i in rois) {
+  # model: condition × task
+  model_subcort <- lmer(
+    EffectSize ~ 1 + cond + task + cond:task + (1 | Subject),
+    data    = dat %>% filter(thr == "top10", ROI == i, localizer == "Lang"),
+    control = lmerControl(optimizer = "bobyqa"))
+
+  # fixed effects summary
+  sum_coef <- summary(model_subcort)$coef
+  sum_coef <- cbind(rownames(sum_coef), sum_coef, i) %>% as_tibble()
+  roi_models_subcort_all <- roi_models_subcort_all %>% rbind(sum_coef)
+
+  # estimated marginal means
+  emm <- emmeans(model_subcort, ~ task * cond)
+
+  # condition vs. zero (each cell vs. 0)
+  cond_vs_zero <- contrast(emm, method = list(
+    "Alice baseline"    = c(1, 0, 0, 0, 0, 0),
+    "Alice critical"    = c(0, 0, 0, 1, 0, 0),
+    "Language baseline" = c(0, 1, 0, 0, 0, 0),
+    "Language critical" = c(0, 0, 0, 0, 1, 0),
+    "MD baseline"       = c(0, 0, 1, 0, 0, 0),
+    "MD critical"       = c(0, 0, 0, 0, 0, 1)),
+    adjust = "none") %>%
+    as.data.frame() %>% as_tibble() %>% cbind(i)
+
+  # between-task contrasts at critical conditions
+  critical_between_tasks <- contrast(emm, method = list(
+    "criticalAlice vs. criticalLang" = c(0, 0, 0,  1, -1,  0),
+    "criticalAlice vs. criticalMD"   = c(0, 0, 0,  1,  0, -1),
+    "criticalLang vs. criticalMD"    = c(0, 0, 0,  0,  1, -1)),
+    adjust = "none") %>%
+    as.data.frame() %>% as_tibble() %>% cbind(i)
+
+  # critical vs. baseline per task
+  critical_vs_baseline <- contrast(emm, method = list(
+    "Alice critical vs. baseline" = c(-1, 0, 0, 1, 0, 0),
+    "Lang critical vs. baseline"  = c(0, -1, 0, 0, 1, 0),
+    "MD critical vs. baseline"    = c(0,  0, -1, 0, 0, 1)),
+    adjust = "none") %>%
+    as.data.frame() %>% as_tibble() %>% cbind(i)
+
+  means <- emm %>% as.data.frame() %>% cbind(i)
+
+  roi_models_subcort_pairwise_condition   <- roi_models_subcort_pairwise_condition   %>% rbind(critical_vs_baseline)
+  roi_models_subcort_pairwise_task        <- roi_models_subcort_pairwise_task        %>% rbind(critical_between_tasks)
+  roi_models_subcort_pairwise_maineffects <- roi_models_subcort_pairwise_maineffects %>% rbind(cond_vs_zero)
+  roi_models_subcort_all_means            <- roi_models_subcort_all_means            %>% rbind(means)
+}
+
+# rename columns
+colnames(roi_models_subcort_all)              <- c("effect", "estimate", "se", "df", "t_value", "p_value", "roi")
+colnames(roi_models_subcort_pairwise_condition)   <- c("contrast", "estimate", "se", "df", "z_ratio", "p_value", "roi")
+colnames(roi_models_subcort_pairwise_task)        <- c("contrast", "estimate", "se", "df", "z_ratio", "p_value", "roi")
+colnames(roi_models_subcort_pairwise_maineffects) <- c("contrast", "estimate", "se", "df", "z_ratio", "p_value", "roi")
+colnames(roi_models_subcort_all_means)        <- c("task", "condition", "emmean", "se", "df", "lowCI", "highCI", "roi")
+
+# attach ROI labels
+labels <- dat %>% select(ROI, label) %>% unique() %>% rename(roi = ROI)
+
+roi_models_subcort_pairwise_condition   <- roi_models_subcort_pairwise_condition   %>% left_join(labels)
+roi_models_subcort_pairwise_task        <- roi_models_subcort_pairwise_task        %>% left_join(labels)
+roi_models_subcort_pairwise_maineffects <- roi_models_subcort_pairwise_maineffects %>% left_join(labels)
+roi_models_subcort_all_means            <- roi_models_subcort_all_means            %>% left_join(labels)
+```
+
+## Responsive and selective parcels
+
+```{r}
+# language-responsive: significant critical > baseline for Alice or Lang,
+# AND significant critical effect vs. zero
+responsive_contrast <- roi_models_subcort_pairwise_condition %>%
+  filter(contrast != "MD critical vs. baseline", p_value < .05) %>%
+  select(roi, label) %>%
+  unique() %>%
+  mutate(responsive_contrast = 1)
+
+responsive_non_zero <- roi_models_subcort_pairwise_maineffects %>%
+  filter(contrast %in% c("Alice critical", "Language critical"), estimate > 0, p_value < .05) %>%
+  select(roi, label) %>%
+  unique() %>%
+  mutate(responsive_non_zero = 1)
+
+responsive <- responsive_contrast %>%
+  left_join(responsive_non_zero, by = c("roi", "label")) %>%
+  filter(responsive_contrast == responsive_non_zero)
+
+# language-selective: significantly greater critical response for Lang/Alice than MD
+selective_candidates <- roi_models_subcort_pairwise_task %>%
+  filter(contrast != "criticalAlice vs. criticalLang", p_value < .05, estimate > 0) %>%
+  select(roi, label) %>%
+  unique() %>%
+  mutate(selective = 1)
+
+selective <- responsive %>%
+  left_join(selective_candidates, by = c("roi", "label")) %>%
+  filter(!is.na(selective)) %>%
+  select(-selective)
+```
+
+## Save results
+
+```{r}
+dir.create(here("results", "stats", "selectivityFallOff_model_stats"), recursive = TRUE, showWarnings = FALSE)
+
+write.table(roi_models_subcort_all,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_model_all_effects.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(roi_models_subcort_pairwise_condition,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_model_pairwise_condition.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(roi_models_subcort_pairwise_task,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_model_pairwise_task.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(roi_models_subcort_pairwise_maineffects,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_model_pairwise_maineffects.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(roi_models_subcort_all_means,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_model_all_means.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(responsive,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_responsive_rois.txt"),
+  sep = "\t", row.names = FALSE)
+
+write.table(selective,
+  here("results", "stats", "selectivityFallOff_model_stats", "subcort_selective_rois.txt"),
+  sep = "\t", row.names = FALSE)
+```

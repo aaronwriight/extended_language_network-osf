@@ -33,7 +33,7 @@ Parcels dfs must follow column format: atlas, roi, lobe, hemi, ROIName
 ```{r}
 # atlas
 
-# read and combine all atlas sheets into one data frame (from 02_stats)
+# read and combine all atlas sheets into one data frame (from 02a_stats)
 atlas_parcels <- bind_rows(
   
   ## Glasser

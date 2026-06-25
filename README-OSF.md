@@ -43,6 +43,7 @@ OSF Storage/
 ├── FigureOSF3 - Different_GSS_threshold
 ├── FigureOSF4 - Robustness_fROIDefinitionDetails
 ├── FigureOSF5 - Robustness_ParticipantSelection
+├── FigureOSF6 - SelectivityFallOff
 ├── functional_language_parcels/                # .nii data (original GSS parcels)
 │   ├── symmetrical parcels/
 │   └── original GcSS parcels/
@@ -68,7 +69,8 @@ Extended Language Network (GitHub - OSF)/
 │   ├── recode_conditions.txt                   # re-ordering file for conditions (used in scripts)
 │   ├── recode_parcels.txt                      # re-ordering file for parcels (used in scripts)
 │   ├── voxel_overlap_results_average.txt       # overlap between functional parcels and atlas parcels
-│   └── whole_brain_lang_estimates.txt          # whole-brain statistical estimates (by-run in each of three preprocessing pipeline)
+│   ├── whole_brain_lang_estimates.txt          # whole-brain statistical estimates (by-run in each of three preprocessing pipeline)
+│   └── detailed_selectivity_falloff_all.txt   # per-subject effect sizes across fROI thresholds (top5%–top100%), for selectivity fall-off analysis
 ├── dev/                                        # developmental/set-up scripts
 │   ├── setup-dev.sh                            # bash script to replicate project environment (R or python)
 │   └── update-dev.sh                           # bash script to update project environment (R or python)
@@ -93,7 +95,7 @@ Extended Language Network (GitHub - OSF)/
 │   │   ├── `TableO2B.xlsx`: ALL functional GSS parcels (responsive and selective, n=86) and NO HOSubCort parcels.
 │   │   └── `TableO3.xlsx`: literature review, same as osf/TableOSF1 - ExtendedLanguageNetwork_SI_LitReviewTable
 ├── scripts/
-│   ├── `02_stats`: produces the gss (n=772 and n=86) and atlas parcel models/statistics
+│   ├── `02a_stats`: produces the gss (n=772 and n=86) and atlas parcel models/statistics
 │   ├── `03_plots`: produces a variety of labeled brain plots and the shell of the main cortical and subcortical figures
 │   ├── `04_summary_tables`: produces a comprehensive list of the distribution of atlas parcels
 │   ├── `05_supplemental_MDfROIs.qmd`: supp. analyses of fROIs defined by MD (spatial WM) localizer
@@ -104,7 +106,9 @@ Extended Language Network (GitHub - OSF)/
 │   ├── `build_parcels_table.R`: a helper script for constructing standardized summary tables for parcels
 │   ├── `plot_brains.R`: a helper script for for plotting raw and statistical data on [{ggseg}](https://github.com/ggseg/ggseg) brains
 │   ├── `plotting_aesthetics.R`: a helper script for defining aesthetic preferences for plotting
-│   └── `run_parcel_models.R`: a helper script for running statistical models on parcel data
+│   ├── `run_parcel_models.R`: a helper script for running statistical models on parcel data
+│   ├── `02b_stats_selectivityFallOff`: runs mixed-effects models per subcortical ROI evaluating language responsiveness and selectivity across fROI thresholds
+│   └── `03c_plots_selectivityFallOff`: produces per-ROI effect-size and selectivity-score plots across fROI thresholds (FigureOSF6)
 ├── viz/
 │   ├── figures/                                # publication-ready, composite figures manually produced for visualization
 │   ├── images/                                 # plots and images produced by scripts

@@ -1,5 +1,5 @@
 ---
-title: "Extended Language Network | 02_stats"
+title: "Extended Language Network | 02a_stats"
 author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
 date: "2025-08-29"
 format: html

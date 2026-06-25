@@ -131,7 +131,7 @@ extended_language_network/
 -   `00a_sanity_checks.qmd`: archival script - a scratch notebook for miscellanous verifications
 -   `00b_miscellaneous_metadata.qmd`: archival script - a scratch notebook for miscellanous info, e.g., demographics
 -   `01_get_data`: takes in functional data and outputs `detail_all.txt`, the main data table for subsequent analyses
--   **`02_stats`**: produces the gss (n=772 and n=86) and atlas parcel models/statistics
+-   **`02a_stats`**: produces the gss (n=772 and n=86) and atlas parcel models/statistics
 -   **`03_plots`**: produces a variety of labeled brain plots and the shell of the main cortical and subcortical figures
 -   **`04_summary_tables`**: produces a comprehensive list of the distribution of atlas parcels
 -   **`05_supplemental_MDfROIs.qmd`**: supp. analyses of fROIs defined by MD (spatial WM) localizer
@@ -246,7 +246,7 @@ Extended Language Network (GitHub - OSF)/
 │   │   ├── `TableO2B.xlsx`: ALL functional GSS parcels (responsive and selective, n=86) and NO HOSubCort parcels.
 │   │   └── `TableO3.xlsx`: literature review, same as osf/TableOSF1 - ExtendedLanguageNetwork_SI_LitReviewTable
 ├── scripts/
-│   ├── `02_stats`: produces the gss (n=772 and n=86) and atlas parcel models/statistics
+│   ├── `02a_stats`: produces the gss (n=772 and n=86) and atlas parcel models/statistics
 │   ├── `03_plots`: produces a variety of labeled brain plots and the shell of the main cortical and subcortical figures
 │   ├── `04_summary_tables`: produces a comprehensive list of the distribution of atlas parcels
 │   ├── `05_supplemental_MDfROIs.qmd`: supp. analyses of fROIs defined by MD (spatial WM) localizer

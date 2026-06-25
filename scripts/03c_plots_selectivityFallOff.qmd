@@ -1,0 +1,273 @@
+---
+title: "Extended Language Network | 03c_plots_selectivityFallOff"
+author: "Agata Wolna [`awolna@mit.edu`], Aaron Wright [`aawva@mit.edu`]"
+date: "2026-06-17"
+format: html
+execute:
+  cache: false
+  freeze: false
+---
+
+## Overview
+
+**Purpose**: Visualize how response profiles and selectivity scores change as a function of fROI threshold (top 5% through top 100% of voxels) for each extended language parcel and Harvard-Oxford subcortical parcel.
+
+**Input(s)**:
+- `data/detailed_selectivity_falloff_all.txt` — per-subject effect sizes across fROI thresholds and conditions
+
+**Process**: Compute mean effect sizes and standard errors per ROI, threshold bin, and condition; compute a composite selectivity score (intact speech − hard vWM) + (sentences − hard vWM) / 2; plot response profiles and selectivity-score fall-off curves per ROI.
+
+**Output(s)**:
+- `viz/images/supplemental/selectivityFallOff/selectivity_{roi}.pdf` — per-ROI effect size plots across thresholds (extended parcels, ROIs 11–27)
+- `viz/images/supplemental/selectivityFallOff/selectivityScore_{roi}.pdf` — per-ROI selectivity score fall-off curves (ROIs 1–10)
+- `viz/images/supplemental/selectivityFallOff/subcortical/selectivity_{roi}.pdf` — per-ROI effect size plots for Harvard-Oxford subcortical parcels
+
+## Environment
+
+```{r}
+library(tidyverse)
+library(here)
+
+knitr::opts_chunk$set(cache = FALSE)
+
+message("Using project directory: ", here())
+
+source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics (cols_fill, my_theme_text)
+```
+
+## Data
+
+```{r}
+raw_data_plots <- read.delim(here("data", "detailed_selectivity_falloff_all.txt")) %>%
+  as_tibble() %>%
+  filter(included == 1)
+
+thresholds <- data.frame(
+  thr = c("top5", "top10", "top20", "top30", "top40", "top50", "top60", "top70", "top80", "top90", "top100"),
+  thr_range = c("5%", "6-10%", "11-20%", "21-30%", "31-40%", "41-50%", "51-60%", "61-70%", "71-80%", "81-90%", "91-100%"))
+```
+
+## Tidying
+
+```{r}
+n <- raw_data_plots %>%
+  select(Subject, localizer, task) %>%
+  unique() %>%
+  count(localizer, task)
+
+## Extended language parcels
+means_plots_raw <- raw_data_plots %>%
+  filter(parcels == "Extended") %>%
+  left_join(n, by = c("localizer", "task")) %>%
+  left_join(thresholds, by = "thr") %>%
+  group_by(ROI, ROI_new, localizer, task, thr_range, condition, hemisphere, label) %>%
+  summarize(MeanEffectSize = mean(EffectSize), se = sd(EffectSize) / sqrt(first(n)), .groups = "drop") %>%
+  unique()
+
+labels <- means_plots_raw %>%
+  ungroup() %>%
+  select(ROI, ROI_new, hemisphere, label) %>%
+  filter(!is.na(ROI_new)) %>%
+  arrange(ROI_new) %>%
+  unique()
+
+means_plots_raw$condition <- factor(means_plots_raw$condition,
+  c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+means_plots_raw$label     <- factor(means_plots_raw$label, labels$label %>% unique())
+means_plots_raw$task      <- factor(means_plots_raw$task, c("Lang", "Alice", "MD"))
+means_plots_raw$thr_range <- factor(means_plots_raw$thr_range,
+  c("5%", "6-10%", "11-20%", "21-30%", "31-40%", "41-50%", "51-60%", "61-70%", "71-80%", "81-90%", "91-100%"))
+
+## Selectivity score (extended parcels)
+selectivity_score <- means_plots_raw %>%
+  filter(condition %in% c("sentences", "intact speech", "hard vWM")) %>%
+  ungroup() %>%
+  select(ROI, ROI_new, hemisphere, label, thr_range, condition, MeanEffectSize) %>%
+  pivot_wider(names_from = condition, values_from = MeanEffectSize) %>%
+  mutate(SelectivityScore = (`intact speech` - `hard vWM`) + (sentences - `hard vWM`) / 2)
+
+## Subcortical parcels
+means_plots_raw_subcort <- raw_data_plots %>%
+  filter(parcels == "HOSubcortical") %>%
+  left_join(n, by = c("localizer", "task")) %>%
+  left_join(thresholds, by = "thr") %>%
+  group_by(ROI, ROI_new, localizer, task, thr_range, condition, hemisphere, label) %>%
+  summarize(MeanEffectSize = mean(EffectSize), se = sd(EffectSize) / sqrt(first(n)), .groups = "drop") %>%
+  unique()
+
+labels_subcort <- means_plots_raw_subcort %>%
+  ungroup() %>%
+  select(ROI, ROI_new, hemisphere, label) %>%
+  filter(!is.na(ROI_new)) %>%
+  arrange(ROI_new) %>%
+  unique()
+rois_subcort <- labels_subcort$ROI_new
+
+means_plots_raw_subcort$condition <- factor(means_plots_raw_subcort$condition,
+  c("sentences", "nonwords", "intact speech", "degraded speech", "hard vWM", "easy vWM"))
+means_plots_raw_subcort$label     <- factor(means_plots_raw_subcort$label, labels_subcort$label %>% unique())
+means_plots_raw_subcort$task      <- factor(means_plots_raw_subcort$task, c("Lang", "Alice", "MD"))
+means_plots_raw_subcort$thr_range <- factor(means_plots_raw_subcort$thr_range,
+  c("5%", "6-10%", "11-20%", "21-30%", "31-40%", "41-50%", "51-60%", "61-70%", "71-80%", "81-90%", "91-100%"))
+
+if (nrow(means_plots_raw %>% filter(!is.na(condition))) == 0) {
+  stop("No extended-parcel plot rows after filtering. Check here() and data/detailed_selectivity_falloff_all.txt.")
+}
+
+if (nrow(selectivity_score) == 0) {
+  stop("No selectivity-score rows after filtering. Check condition labels in the falloff data.")
+}
+
+if (nrow(means_plots_raw_subcort %>% filter(!is.na(condition))) == 0) {
+  stop("No subcortical plot rows after filtering. Check here() and data/detailed_selectivity_falloff_all.txt.")
+}
+
+message(
+  "Plot rows: extended = ", nrow(means_plots_raw %>% filter(!is.na(condition))),
+  "; selectivity_score = ", nrow(selectivity_score),
+  "; subcortical = ", nrow(means_plots_raw_subcort %>% filter(!is.na(condition)))
+)
+```
+
+## Plotting
+
+### Extended parcels — effect size by threshold (ROIs 11–27)
+
+```{r}
+dir.create(here("viz", "images", "supplemental", "selectivityFallOff"), recursive = TRUE, showWarnings = FALSE)
+
+for (nroi in 11:27) {
+  plot_data <- means_plots_raw %>%
+    filter(ROI_new == nroi, !is.na(condition)) %>%
+    droplevels()
+
+  if (nrow(plot_data) == 0) {
+    warning(str_c("No extended-parcel data available for ROI_new ", nroi))
+    next
+  }
+
+  roi_label <- labels %>%
+    filter(ROI_new == nroi) %>%
+    slice(1)
+
+  p <- ggplot(plot_data, aes(x = thr_range, y = MeanEffectSize,
+                             ymin = MeanEffectSize - se, ymax = MeanEffectSize + se,
+                             color = condition)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    geom_point(position = position_dodge(0.4), size = 0.7) +
+    geom_errorbar(position = position_dodge(0.4), linewidth = 0.25, width = 0) +
+    geom_line(aes(group = condition), position = position_dodge(0.4), linewidth = 0.25) +
+    scale_color_manual("Condition", values = cols_fill) +
+    guides(color = guide_legend(ncol = 1, byrow = TRUE,
+                                override.aes = list(linewidth = 0.45, size = 1.2))) +
+    scale_y_continuous("Effect size") +
+    scale_x_discrete("fROI threshold") +
+    ggtitle(str_c(roi_label$hemisphere, "\n", roi_label$label)) +
+    coord_cartesian(ylim = c(-1.3, 2)) +
+    theme_minimal() +
+    theme(legend.position = "right",
+          legend.title = element_text(size = 7),
+          legend.text = element_text(size = 6.5),
+          legend.key.height = grid::unit(0.28, "cm"),
+          legend.key.width = grid::unit(0.45, "cm"),
+          legend.spacing.y = grid::unit(0.02, "cm"),
+          legend.margin = margin(0, 0, 0, 2),
+          axis.text.x = element_text(angle = 30, vjust = 0.75),
+          plot.title = element_text(hjust = 0.5),
+          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.4))
+
+  print(p)
+  ggsave(here("viz", "images", "supplemental", "selectivityFallOff", str_c("selectivity_", nroi, ".pdf")),
+         plot = p, dpi = 500, width = 7, height = 5, units = "in")
+}
+```
+
+### Extended parcels — selectivity score by threshold (ROIs 1–10)
+
+```{r}
+for (nroi in 1:10) {
+  plot_data <- selectivity_score %>%
+    filter(ROI_new == nroi) %>%
+    droplevels()
+
+  if (nrow(plot_data) == 0) {
+    warning(str_c("No selectivity-score data available for ROI_new ", nroi))
+    next
+  }
+
+  roi_label <- labels %>%
+    filter(ROI_new == nroi) %>%
+    slice(1)
+
+  p <- ggplot(plot_data, aes(x = thr_range, y = SelectivityScore)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    geom_point(position = position_dodge(0.4), size = 0.7) +
+    geom_line(aes(group = 1), position = position_dodge(0.4), linewidth = 0.25) +
+    scale_y_continuous("Selectivity Score", breaks = c(-2, 0, 2, 4)) +
+    scale_x_discrete("fROI threshold") +
+    ggtitle(str_c(roi_label$hemisphere, "\n", roi_label$label)) +
+    coord_cartesian(ylim = c(-1.7, 4.7)) +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+          axis.text.x = element_text(angle = 30, vjust = 0.75),
+          plot.title = element_text(hjust = 0.5),
+          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.4))
+
+  print(p)
+  ggsave(here("viz", "images", "supplemental", "selectivityFallOff", str_c("selectivityScore_", nroi, ".pdf")),
+         plot = p, dpi = 500, width = 7, height = 5, units = "in")
+}
+```
+
+### Subcortical parcels — effect size by threshold
+
+```{r}
+dir.create(here("viz", "images", "supplemental", "selectivityFallOff", "subcortical"), recursive = TRUE, showWarnings = FALSE)
+
+for (nroi in seq_along(rois_subcort)) {
+  roi_id <- rois_subcort[nroi]
+
+  plot_data <- means_plots_raw_subcort %>%
+    filter(ROI_new == roi_id, !is.na(condition)) %>%
+    droplevels()
+
+  if (nrow(plot_data) == 0) {
+    warning(str_c("No subcortical data available for ROI_new ", roi_id))
+    next
+  }
+
+  roi_label <- labels_subcort %>%
+    filter(ROI_new == roi_id) %>%
+    slice(1)
+
+  p <- ggplot(plot_data, aes(x = thr_range, y = MeanEffectSize,
+                             ymin = MeanEffectSize - se, ymax = MeanEffectSize + se,
+                             color = condition)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    geom_point(position = position_dodge(0.4), size = 0.7) +
+    geom_errorbar(position = position_dodge(0.4), linewidth = 0.25, width = 0) +
+    geom_line(aes(group = condition), position = position_dodge(0.4), linewidth = 0.25) +
+    scale_color_manual("Condition", values = cols_fill) +
+    guides(color = guide_legend(ncol = 1, byrow = TRUE,
+                                override.aes = list(linewidth = 0.45, size = 1.2))) +
+    scale_y_continuous("Effect size") +
+    scale_x_discrete("fROI threshold") +
+    ggtitle(roi_label$label) +
+    theme_minimal() +
+    theme(legend.position = "right",
+          legend.title = element_text(size = 7),
+          legend.text = element_text(size = 6.5),
+          legend.key.height = grid::unit(0.28, "cm"),
+          legend.key.width = grid::unit(0.45, "cm"),
+          legend.spacing.y = grid::unit(0.02, "cm"),
+          legend.margin = margin(0, 0, 0, 2),
+          axis.text.x = element_text(angle = 30, vjust = 0.75),
+          plot.title = element_text(hjust = 0.5),
+          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.4))
+
+  print(p)
+  ggsave(here("viz", "images", "supplemental", "selectivityFallOff", "subcortical",
+              str_c("selectivity_", roi_id, ".pdf")),
+         plot = p, dpi = 500, width = 7, height = 5, units = "in")
+}
+```

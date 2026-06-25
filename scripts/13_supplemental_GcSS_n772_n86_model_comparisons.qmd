@@ -28,7 +28,7 @@ source(here("scripts", "run_parcel_models.R"))
 source(here("scripts", "plotting_aesthetics.R")) # EvLab contrast aesthetics
 ```
 
-This pipeline is organized into two sections, stats and plotting, to be consistent with the pipeline adopted for the GSS n772 and atlas aprcel models in 02_stats.qmd and 03_plots.qmd. This script is a acollapsing of the goals of those two scripts as applied to the GSS n86 model.
+This pipeline is organized into two sections, stats and plotting, to be consistent with the pipeline adopted for the GSS n772 and atlas aprcel models in 02a_stats.qmd and 03_plots.qmd. This script is a acollapsing of the goals of those two scripts as applied to the GSS n86 model.
 
 # Section I : Stats pipeline
 
@@ -57,7 +57,7 @@ Group-constrained specific-subject parcellation method (see Fedorenko et al., 20
 
 ## Tidying and raw data descriptive statistics
 
-Following the statistical model approach outlined in 02_stats for the GSS n772 model, we compute statistics for a subset of the parcels as defined by individuals who completed all three localizer tasks.
+Following the statistical model approach outlined in 02a_stats for the GSS n772 model, we compute statistics for a subset of the parcels as defined by individuals who completed all three localizer tasks.
 
 ```{r}
 #| eval: false
